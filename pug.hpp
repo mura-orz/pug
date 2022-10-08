@@ -27,26 +27,42 @@
 namespace xxx::pug {
 namespace ex {
 
+///	@brief	Syntax error exception.
 class syntax_error : public std::runtime_error {
 public:
+	///	@brief	Constructor.
 	syntax_error() noexcept : std::runtime_error("syntax_error") {}
+	///	@brief	Constructor.
+	///	@param[in]	message		Message to display.
 	syntax_error(std::string const& message) noexcept : std::runtime_error(message) {}
+	///	@brief	Constructor.
+	///	@param[in]	message		Message to display.
 	syntax_error(char const* const message) noexcept : std::runtime_error(message) {}
 };
 
+///	@brief	I/O error exception.
 class io_error : public std::nested_exception {
 public:
+	///	@brief	Gets the path of file that is cause of this exception.
+	///	@param[in]	path	Path of the file.
 	auto const&		path() const noexcept { return path_; }
 
+	///	@brief	Constructor.
 	io_error() : std::nested_exception(), path_{ "io_error" } {}
+	///	@brief	Constructor.
+	///	@param[in]	path	Path of the file.
 	io_error(std::filesystem::path const& path) : std::nested_exception(), path_{ path.string() } {}
 private:
-	std::string		path_;
+	std::string		path_;	///< Path of the file.
 };
 
 }	// namespace ex
 namespace impl {
 
+///	@brief	Reads the file as string.
+///	@param[in]	path	Path of the file to read.
+///	@return		Context of the file.
+///	@throws		xxx::pug::ex::io_error		It throws the exception if an I/O error occurred.
 inline std::string		load_file(std::filesystem::path const& path) {
 	try {
 		std::ifstream	ifs;
@@ -66,6 +82,10 @@ inline std::string		load_file(std::filesystem::path const& path) {
 	}
 }
 
+///	@brief	Splits string with new lines.
+///	@param[in]	str		String to split.
+///	@return		List of lines.
+///	@warning	Keep original string available because it returns view of the string.
 inline std::vector<std::string_view>	split_lines(std::string_view const str) {
 	std::vector<std::string_view>	v;
 	v.reserve(str.size());
@@ -77,16 +97,36 @@ inline std::vector<std::string_view>	split_lines(std::string_view const str) {
 	return v;
 }
 
+///	@brief	Nested level.
 using	nest_t		= std::size_t;
+///	@brief	Primitive line.
+///		The first element is nested level.
+///		The second element is view of string.
+///	@warning	Keep original string available because it returns view of the string.
 using	line_t		= std::pair<nest_t, std::string_view>;
+///	@brief	Regular expression result using view of string.
+///	@warning	Keep original string available because it returns view of the string.
 using	svmatch		= std::match_results<std::string_view::const_iterator>;
 
+///	@brief	Gets a captured string matched to regular expression.
+///		It returns partial view of the @p s string,
+///		which differs from 'm.str(n)' that generates a new string.
+///	@warning	Keep original string available because it returns view of the string.
+/// @param[in]	s		Target string of the regular expression.
+/// @param[in]	m		Matching result of the regular expression.
+/// @param[in]	n		Index of the captured result. Exceptionaly, zero means while of matching.
+/// @return		A captured string or while of matching.
 inline std::string_view		to_str(std::string_view s, svmatch const& m, std::size_t n) noexcept {
 	return n < m.size() ? s.substr(m.position(n), m.length(n)) : std::string_view{};
 }
 
-std::regex const	nest_re{ "^([\t]*)(.*)$" };	// This implementation supports only tabs as indent.
+///	@brief	Regular expression of nested line.
+///		This implementation supports only tabs as indent.
+std::regex const	nest_re{ "^([\t]*)(.*)$" };
 
+///	@brief	Gets a nested line from a raw line string.
+///	@param[in]	line	A raw line string.
+///	@return		Nested line.
 inline line_t	get_line_nest(std::string_view const line) {
 	if (svmatch m; std::regex_match(line.cbegin(), line.cend(), m, nest_re)) {
 		return { m.length(1), to_str(line, m, 2) };
@@ -95,35 +135,77 @@ inline line_t	get_line_nest(std::string_view const line) {
 	}
 }
 
+///	@brief	Node of nested lines.
 class line_node_t {
 public:
+	///	@brief	Gets the nested level of the node.
+	///	@return		Nested level.
 	nest_t										nest() const noexcept { return line_.first; }
+	///	@brief	Gets the tabs to indent.
+	///	@return		Tabs to indent.
 	std::string									tabs() const { return std::string( nest(), '\t'); }
+	///	@brief	Gets the line of the node.
+	///	@return		Line of the node.
 	auto const&									line() const noexcept {	return line_.second; }
+	///	@brief	Push the @p line as a child of the @p parent.
+	/// @param[in]	line	Line to push.
+	/// @param[in]	parent	Parent of the @p line.
+	///	@return		The pushed line.
 	auto&										push_nest(line_t const& line, std::shared_ptr<line_node_t> parent)	{	children_.push_back(std::make_shared<line_node_t>(line, parent)); return children_.back(); }
+	///	@copydoc	line_node_t::push_nest(line_t const&,std::shared_ptr<line_node_t>)
 	auto&										push_nest(line_t&& line, std::shared_ptr<line_node_t> parent)		{	children_.emplace_back(std::make_shared<line_node_t>(line, parent)); return children_.back(); }
+	///	@brief	Gets the children of the node.
+	///	@return		the children of the node.
 	auto const&									children() const noexcept { return children_; }
+	///	@brief	Gets the parent of the node.
+	///	@return		the parent of the node.
+	///				It ruturns null if the node is the root of nodes.
 	auto const									parent() const noexcept { return parent_.lock(); }
+	///	@copydoc	line_node_t::push_nest()
 	auto										parent() noexcept { return parent_.lock(); }
+	///	@brief	Gets whether the node is holding or not.
+	///	@return		It returns true if the node is holding; otherwise, it returns false.
 	bool										holding() const noexcept { return holding_; }
+	///	@brief	Sets whether the node is holding or not.
+	///	@param[in]	on		Whether the node is holding or not.
+	/// @arg	true		Node is holding.
+	/// @arg	false		Node is not holding.
 	void										set_holding(bool on) noexcept { holding_ = on; }
+	///	@brief	Clears all the children.
 	void										clear_children() noexcept { children_.clear(); }
+	///	@brief	Gets the previous 'sister' line.
+	///		The 'sister' is a child of the same parent.
+	///	@return		The previous 'sister' line.
 	std::shared_ptr<line_node_t const>			previous() const {
 		auto const parent = parent_.lock();
-		return !parent || parent->children().empty() ? nullptr : parent->children().back();
+		return ! parent || parent->children().empty() ? nullptr : parent->children().back();
 	}
+	///	@brief	Constructor.
+	///	@param[in]	line	Line
+	///	@param[in]	parent	Larent of this node.
 	explicit	line_node_t(line_t const& line, std::shared_ptr<line_node_t> parent) noexcept : children_{}, parent_{ parent }, line_{ line }, holding_{} {}
+	///	@brief	Constructor.
 	line_node_t() noexcept : children_{}, parent_{}, line_{}, holding_{} {}
 private:
-	std::vector<std::shared_ptr<line_node_t>>	children_;
-	std::weak_ptr<line_node_t>					parent_;
-	line_t										line_;
-	bool										holding_;
-};
-inline std::shared_ptr<line_node_t>	pop_nest(std::shared_ptr<line_node_t> node, nest_t nest) {
-	return ! node || node->nest() <= nest ? node : pop_nest(node->parent(), nest);
+	std::vector<std::shared_ptr<line_node_t>>	children_;	///< @brief	Children of the node.
+	std::weak_ptr<line_node_t>					parent_;	///< @brief	Parent of the node.
+	line_t										line_;		///< @brief	Line of the node.
+	bool										holding_;	///< @brief	Whether holding or not.
 };
 
+///	@brief	Pops nested nodes to the @p nest or less level.
+///		It returns an ancestor has the nested level less than or equal to the @p nest.
+///	@param[in]	node	The current node.
+///	@param[in]	nest	Nested level to pop.
+///	@return		The poped node.
+inline std::shared_ptr<line_node_t>	pop_nest(std::shared_ptr<line_node_t> node, nest_t nest) {
+	return ! node || node->nest() <= nest ? node : pop_nest(node->parent(), nest);
+}
+
+///	@brief	Dumps hierarchy of nodes to the output stream.
+///	@param[in]	os		Output stream.
+///	@param[in]	node	Node to dump.
+///	@param[in]	nest	Current nested level.
 inline void dump_lines(std::ostream& os, std::shared_ptr<line_node_t> node, size_t nest=0u) {
 	if (!node)	return;
 
@@ -137,9 +219,13 @@ inline void dump_lines(std::ostream& os, std::shared_ptr<line_node_t> node, size
 	}
 }
 
-inline std::shared_ptr<line_node_t>		parse_file(std::string_view source, nest_t nest=0u) {
+///	@brief	Parses file contet as pug.
+///	@param[in]	pug		File context formed as pug.
+///	@param[in]	nest	Base of nested level. It is added to nested levels of parsed nodes.
+///	@return		The root of parsed nodes.
+inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nest=0u) {
 	auto		root	= std::make_shared<line_node_t>(line_t{ nest, std::string_view{} }, nullptr);
-	auto const	lines	= split_lines(source) | std::views::transform(&get_line_nest) | std::views::transform([nest](auto const& a) { return line_t{ a.first + nest, a.second }; });
+	auto const	lines	= split_lines(pug) | std::views::transform(&get_line_nest) | std::views::transform([nest](auto const& a) { return line_t{ a.first + nest, a.second }; });
 
 	// Parses to tree of nested lines.
 	std::regex const	empty_re{ R"(^[ \t]*$)" };
@@ -188,6 +274,12 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view source, nest_t 
 	return root;
 }
 
+///	@brief	Gets the nodes is whether holding or not.
+///	@param[in]	line		A line as base point.
+///	@param[in]	parent_only	Range of nodes to check.
+/// @arg		true		This function returns true if parent is holding regardless of the @p line holding.
+/// @arg		false		This function returns true if parent or the @p line is holding.
+///	@return		Whether holding or not. See above.
 inline bool is_holding(std::shared_ptr<line_node_t> line, bool parent_only=false) {
 	if (auto const parent = line->parent(); parent && parent->holding()) {
 		return true;
@@ -195,8 +287,21 @@ inline bool is_holding(std::shared_ptr<line_node_t> line, bool parent_only=false
 	return ! parent_only && line->holding();
 }
 
-std::ostream&	parse_lines(std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path);
+void	parse_line(std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path);
 
+///	@brief	Parses a element from the @p line.
+///		This implementation supports only the following order:
+///			tag#id.class.class(attr,attr)
+///	@param[in]	s		Pug.
+///	@param[in]	os		Output stream.
+///	@param[in]	line	Line of the pug.
+///	@param[in]	path	Path of the pug.
+///	@return		It returns the followings:
+///	@todo	The 'var' directive.
+///	@todo	The 'for' directive.
+///	@todo	The 'extends' and 'block' directive.
+///	@todo	The 'mixin' directive.
+///	@todo	The '=' directive.
 inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t>>	parse_element(std::string_view s, std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
 	if ( ! line)	throw std::invalid_argument(__func__);
 	std::set<std::string_view> const	void_tags{ "br", "hr", "img", "meta", "input", "link", "area", "base", "col", "embed", "param", "source", "track", "wbr" };
@@ -225,13 +330,13 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
 		auto const	source	= load_file(pug);	// This string will be invalidated at the end of this function.
 		auto const	sub		= parse_file(source, line->nest());
-		(void) parse_lines(os, sub, path);		// Thus, output of the included pug must be finised here.
+		parse_line(os, sub, path);		// Thus, output of the included pug must be finised here.
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, extends_re)) {
 		// Opens an including pug file from relative path of the current pug.
 		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
 		auto const	source	= load_file(pug);	// This string will be invalidated at the end of this function.
 		auto const	sub		= parse_file(source, line->nest());
-		(void) parse_lines(os, sub, path);		// Thus, output of the included pug must be finised here.
+		parse_line(os, sub, path);		// Thus, output of the included pug must be finised here.
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, block_re)) {
 		return { std::string_view{}, to_str(s, m, 1), line };	// TODO:
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, doctype_re)) {
@@ -247,8 +352,6 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 			os	<< "<!-- TODO: var " << a->line() << " -->" << '\n';
 		});
 	} else if (std::regex_search(s.cbegin(), s.cend(), m, tag_re)) {
-		// TODO: This implementation supports only the following order: tag#id.class.class(attr,attr)
-
 		// Tag
 		auto tag		= to_str(s, m, 1);
 		auto const	void_tag = void_tags.contains(tag);
@@ -322,10 +425,15 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 	return { std::string_view{}, std::string_view{}, nullptr };
 }
 
+///	@brief	Map of blocks.
 using blocks_t	= std::unordered_map<std::string_view, std::shared_ptr<line_node_t>>;
 
-inline std::ostream& parse_lines(std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
-	if ( ! line)		return os;
+///	@brief	Parses a line of pug.
+///	@param[in]	os		Output stream.
+///	@param[in]	line	Line of the pug.
+///	@param[in]	path	Path of the pug.
+inline	void	parse_line(std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
+	if ( ! line)		return;
 	std::regex const	comment_re{ R"(^//-[ \t]?(.*)$)" };
 	std::regex const	empty_re{ R"(^[ \t]*$)" };
 	auto const			str		= line->line();
@@ -345,7 +453,7 @@ inline std::ostream& parse_lines(std::ostream& os, std::shared_ptr<line_node_t> 
 			}
 		}
 		if ( ! line->children().empty()) {
-			std::ranges::for_each(line->children(), [&os, &path](auto const& a) { parse_lines(os, a, path); });
+			std::ranges::for_each(line->children(), [&os, &path](auto const& a) { parse_line(os, a, path); });
 		}
 		for ( ; !tags.empty(); tags.pop()) {
 			if ( ! is_holding(line)) {
@@ -360,22 +468,22 @@ inline std::ostream& parse_lines(std::ostream& os, std::shared_ptr<line_node_t> 
 			os	<< '\n';
 		}
 	}
-	return os;
 }
 
 }	// namespace impl
 
+///	@brief	Translates a pug file to HTML string.
+///	@param[in]	path	Path of the pug file.
+///	@return		String of generated HTML.
 inline std::string		pug(std::filesystem::path const& path) {
-	using namespace std::string_view_literals;
-
 	auto const	source		= impl::load_file(path);
 	auto const	root		= impl::parse_file(source);
 
 	// TODO:	impl::dump_lines(std::clog, root);
 
 	std::ostringstream	oss;
-	impl::parse_lines(std::clog, root, path);	// TODO:
-	impl::parse_lines(oss, root, path);
+	impl::parse_line(std::clog, root, path);	// TODO:
+	impl::parse_line(oss, root, path);
 
 	return oss.str();
 }
