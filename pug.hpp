@@ -110,6 +110,7 @@ using	svmatch		= std::match_results<std::string_view::const_iterator>;
 /// @param[in]	m		Matching result of the regular expression.
 /// @param[in]	n		Index of the captured result. Exceptionaly, zero means while of matching.
 /// @return		A captured string or while of matching.
+///	@warning	Keep original string available because it returns view of the string.
 inline std::string_view		to_str(std::string_view s, svmatch const& m, std::size_t n) noexcept {
 	return n < m.size() ? s.substr(m.position(n), m.length(n)) : std::string_view{};
 }
@@ -121,6 +122,7 @@ std::regex const	nest_re{ "^([\t]*)(.*)$" };
 ///	@brief	Gets a nested line from a raw line string.
 ///	@param[in]	line	A raw line string.
 ///	@return		Nested line.
+///	@warning	Keep original string available because it returns view of the string.
 inline line_t	get_line_nest(std::string_view const line) {
 	if (svmatch m; std::regex_match(line.cbegin(), line.cend(), m, nest_re)) {
 		return { m.length(1), to_str(line, m, 2) };
@@ -130,6 +132,7 @@ inline line_t	get_line_nest(std::string_view const line) {
 }
 
 ///	@brief	Node of nested lines.
+///	@warning	Keep original string available because it returns view of the string.
 class line_node_t {
 public:
 	///	@brief	Gets the nested level of the node.
@@ -217,6 +220,7 @@ inline void dump_lines(std::ostream& os, std::shared_ptr<line_node_t> node, size
 ///	@param[in]	pug		File context formed as pug.
 ///	@param[in]	nest	Base of nested level. It is added to nested levels of parsed nodes.
 ///	@return		The root of parsed nodes.
+///	@warning	Keep original string available because it returns view of the string.
 inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nest=0u) {
 	auto		root	= std::make_shared<line_node_t>(line_t{ nest, std::string_view{} }, nullptr);
 	auto const	lines	= split_lines(pug) | std::views::transform(&get_line_nest) | std::views::transform([nest](auto const& a) { return line_t{ a.first + nest, a.second }; });
@@ -286,16 +290,24 @@ void	parse_line(std::ostream& os, std::shared_ptr<line_node_t> line, std::filesy
 ///	@brief	Parses a element from the @p line.
 ///		This implementation supports only the following order:
 ///			tag#id.class.class(attr,attr)
+///		This implementation supports only single line element:
 ///	@param[in]	s		Pug.
 ///	@param[in]	os		Output stream.
 ///	@param[in]	line	Line of the pug.
 ///	@param[in]	path	Path of the pug.
 ///	@return		It returns the followings:
+///		-#	Remaingin string of the line.
+///		-#	Tag name to close later, or block name.
+///		-#	The root node of block.
 ///	@todo	The 'var' directive.
 ///	@todo	The 'for' directive.
+///	@todo	The 'each' directive.
+///	@todo	The 'switch' directive.
+///	@todo	The 'if'-'else' directives.
 ///	@todo	The 'extends' and 'block' directive.
 ///	@todo	The 'mixin' directive.
 ///	@todo	The '=' directive.
+///	@warning	Keep original string available because it returns view of the string.
 inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t>>	parse_element(std::string_view s, std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
 	if ( ! line)	throw std::invalid_argument(__func__);
 	std::set<std::string_view> const	void_tags{ "br", "hr", "img", "meta", "input", "link", "area", "base", "col", "embed", "param", "source", "track", "wbr" };
@@ -423,6 +435,18 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 using blocks_t	= std::unordered_map<std::string_view, std::shared_ptr<line_node_t>>;
 
 ///	@brief	Parses a line of pug.
+///		The following limitations will cause syntax error.
+///		-	This implementation supports only tabs as indent.
+///		-	This implementation supports only the following order of emenet:
+///				-	tag#id.class.class(attr,attr)
+///		-	This implementation supports only single line element:
+///		-	This implementation does not support inline style.
+///		-	This implementation supports boolean attribute as only true.
+///			The following expressions are not supported:
+///				-	attr=true
+///				-	attr=false
+///		-	This implementation supports only either the '#id' style or the '(id='..')' style in an element.
+///		-	This implementation supports only either the '.class' style or the '(class='..')' style in an element.
 ///	@param[in]	os		Output stream.
 ///	@param[in]	line	Line of the pug.
 ///	@param[in]	path	Path of the pug.
