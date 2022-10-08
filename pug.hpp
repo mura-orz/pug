@@ -316,6 +316,11 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 	std::regex const	block_re{ R"(^block[ \t]+([^ ]+)$)" };
 	std::regex const	extends_re{ R"(^extends[ \t]+([^ ]+)$)" };
 	std::regex const	doctype_re{ R"(^[dD][oO][cC][tT][yY][pP][eE] ([A-Za-z0-9_]+)$)" };
+	std::regex const	switch_re{ R"(^case[ \t]+([A-Za-z_][A-Za-z0-9_]*)$)" };
+	std::regex const	if_re{ R"(^if[ \t]+(.*)$)" };
+	std::regex const	elif_re{ R"(^else if[ \t]+(.*)$)" };
+	std::regex const	else_re{ R"(^else[ \t]+(.*)$)" };
+	std::regex const	each_re{ R"(^each[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*in[ \t]*\[([^\]]*)\]$)" };
 	std::regex const	for_re{ R"(^-[ \t]+for[ \t]*\(var[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+);[ \tA-Za-z0-9_+*/%=<>!-]*;\)$)" };
 	std::regex const	var_re{ R"(^-[ \t]+var[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+)$)" };
 	std::regex const	tag_re{ R"(^([#.]?[A-Za-z0-9_-]+))"};
@@ -347,10 +352,35 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 		return { std::string_view{}, to_str(s, m, 1), line };	// TODO:
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, doctype_re)) {
 		os << "<!DOCTYPE " << to_str(s, m, 1) << ">" << '\n';
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, if_re)) {
+		// TODO:
+		std::ranges::for_each(line->children(), [&os](auto const& a) {
+			os	<< "<!-- TODO: if " << a->line() << " -->" << '\n';
+		});
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, elif_re)) {
+		// TODO:
+		std::ranges::for_each(line->children(), [&os](auto const& a) {
+			os	<< "<!-- TODO: else-if " << a->line() << " -->" << '\n';
+		});
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, else_re)) {
+		// TODO:
+		std::ranges::for_each(line->children(), [&os](auto const& a) {
+			os	<< "<!-- TODO: else " << a->line() << " -->" << '\n';
+		});
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, switch_re)) {
+		// TODO:
+		std::ranges::for_each(line->children(), [&os](auto const& a) {
+			os	<< "<!-- TODO: switch-case " << a->line() << " -->" << '\n';
+		});
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, for_re)) {
 		// TODO:
 		std::ranges::for_each(line->children(), [&os](auto const& a) {
 			os	<< "<!-- TODO: for " << a->line() << " -->" << '\n';
+		});
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, each_re)) {
+		// TODO:
+		std::ranges::for_each(line->children(), [&os](auto const& a) {
+			os	<< "<!-- TODO: each " << a->line() << " -->" << '\n';
 		});
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, var_re)) {
 		// TODO:
