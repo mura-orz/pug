@@ -34,26 +34,20 @@ public:
 	syntax_error() noexcept : std::runtime_error("syntax_error") {}
 	///	@brief	Constructor.
 	///	@param[in]	message		Message to display.
-	syntax_error(std::string const& message) noexcept : std::runtime_error(message) {}
+	explicit	syntax_error(std::string const& message) noexcept : std::runtime_error(message) {}
 	///	@brief	Constructor.
 	///	@param[in]	message		Message to display.
-	syntax_error(char const* const message) noexcept : std::runtime_error(message) {}
+	explicit	syntax_error(char const* const message) noexcept : std::runtime_error(message) {}
 };
 
 ///	@brief	I/O error exception.
-class io_error : public std::nested_exception {
+class io_error : public std::ios_base::failure {
 public:
-	///	@brief	Gets the path of file that is cause of this exception.
-	///	@param[in]	path	Path of the file.
-	auto const&		path() const noexcept { return path_; }
-
 	///	@brief	Constructor.
-	io_error() : std::nested_exception(), path_{ "io_error" } {}
+	explicit	io_error(std::error_code const& code) : std::ios_base::failure("io_error", code) {}
 	///	@brief	Constructor.
 	///	@param[in]	path	Path of the file.
-	io_error(std::filesystem::path const& path) : std::nested_exception(), path_{ path.string() } {}
-private:
-	std::string		path_;	///< Path of the file.
+	explicit	io_error(std::filesystem::path const& path, std::error_code const& code) : std::ios_base::failure(path.string(), code) {}
 };
 
 }	// namespace ex
@@ -77,8 +71,8 @@ inline std::string		load_file(std::filesystem::path const& path) {
 		std::ranges::copy(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>(), std::back_inserter(v));
 		v.push_back('\0');
 		return &v[0];
-	} catch (std::ios_base::failure const&) {
-		throw ex::io_error(path);
+	} catch (std::ios_base::failure const& e) {
+		throw ex::io_error(path.string(), e.code());
 	}
 }
 

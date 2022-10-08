@@ -61,8 +61,8 @@ inline void									output(std::filesystem::path const& path, std::string_view c
 		ofs.open(path, std::ios::out | std::ios::binary);
 
 		std::ranges::copy(content, std::ostreambuf_iterator<char>(ofs));
-	} catch (std::ios_base::failure const&) {
-		throw xxx::pug::ex::io_error(path);
+	} catch (std::ios_base::failure const& e) {
+		throw xxx::pug::ex::io_error(path.string(), e.code());
 	}
 }
 
@@ -105,11 +105,7 @@ int		main(int ac, char* av[]) {
 	} catch (xxx::pug::ex::syntax_error const& e) {
 		std::cerr	<< err::Syntax_error << " : " << e.what() << std::endl;
 	} catch (xxx::pug::ex::io_error const& e) {
-		try {
-			e.rethrow_nested();
-		} catch (std::ios_base::failure const& ee) {
-			std::cerr	<< err::IO_failed << " : " << e.path() << " [" << ee.code() << "]" << std::endl;
-		}
+		std::cerr	<< err::IO_failed << " : " << e.what() << " [" << e.code() << "]" << std::endl;
 	} catch (std::exception const& e) {
 		std::cerr	<< err::Unexpected << " : " << e.what() << std::endl;
 	} catch (...) {
