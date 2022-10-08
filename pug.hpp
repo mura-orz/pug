@@ -200,10 +200,10 @@ inline std::shared_ptr<line_node_t>	pop_nest(std::shared_ptr<line_node_t> node, 
 }
 
 ///	@brief	Dumps hierarchy of nodes to the output stream.
-///	@param[in]	os		Output stream.
+///	@param[in,out]	os	Output stream.
 ///	@param[in]	node	Node to dump.
 ///	@param[in]	nest	Current nested level.
-inline void dump_lines(std::ostream& os, std::shared_ptr<line_node_t> node, size_t nest=0u) {
+inline void dump_lines(std::ostream& os, std::shared_ptr<line_node_t const> node, size_t nest=0u) {
 	if (!node)	return;
 
 	os << std::string(nest, '\t') << node->line() << ":" << node->nest();
@@ -285,14 +285,32 @@ inline bool is_holding(std::shared_ptr<line_node_t> line, bool parent_only=false
 	return ! parent_only && line->holding();
 }
 
-void	parse_line(std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path);
+///	@brief	Map of blocks.
+using blocks_t = std::unordered_map<std::string_view, std::shared_ptr<line_node_t>>;
+
+///	@brief	Parsing context,
+class context_t {
+public:
+	auto const& block(std::string_view tag) const { return blocks_.at(tag); }
+	bool			has_block(std::string_view tag) const noexcept { return blocks_.contains(tag); }
+	void			set_block(std::string_view tag, std::shared_ptr<line_node_t> block) {
+		if (tag.empty())	throw std::invalid_argument(__func__);
+		blocks_[tag] = block;
+	}
+	context_t() noexcept : blocks_{} {}
+private:
+	blocks_t	blocks_;	///< @brief	Blocks.
+};
+
+context_t	parse_line(std::ostream&, context_t const&, std::shared_ptr<line_node_t>, std::filesystem::path const&);
 
 ///	@brief	Parses a element from the @p line.
 ///		This implementation supports only the following order:
 ///			tag#id.class.class(attr,attr)
 ///		This implementation supports only single line element:
 ///	@param[in]	s		Pug.
-///	@param[in]	os		Output stream.
+///	@param[in,out]	os	Output stream.
+///	@param[in]	context	Parsing context.
 ///	@param[in]	line	Line of the pug.
 ///	@param[in]	path	Path of the pug.
 ///	@return		It returns the followings:
@@ -304,11 +322,10 @@ void	parse_line(std::ostream& os, std::shared_ptr<line_node_t> line, std::filesy
 ///	@todo	The 'each' directive.
 ///	@todo	The 'switch' directive.
 ///	@todo	The 'if'-'else' directives.
-///	@todo	The 'extends' and 'block' directive.
 ///	@todo	The 'mixin' directive.
 ///	@todo	The '=' directive.
 ///	@warning	Keep original string available because it returns view of the string.
-inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t>>	parse_element(std::string_view s, std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
+inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t>, context_t>	parse_element(std::string_view s, std::ostream& os, context_t const& context, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
 	if ( ! line)	throw std::invalid_argument(__func__);
 	std::set<std::string_view> const	void_tags{ "br", "hr", "img", "meta", "input", "link", "area", "base", "col", "embed", "param", "source", "track", "wbr" };
 	std::string_view const	raw_html{ "." };
@@ -328,11 +345,13 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 	std::regex const	id_re{ R"(^#([A-Za-z0-9_-]+))" };
 	std::regex const	class_re{ R"(^\.([A-Za-z0-9_-]+))" };
 
+	std::remove_const<std::remove_reference<decltype(context)>::type>::type	ctx = context;
+
 	if (s.empty() && line->parent()) {
 		os	<< '\n';
 	} else if (s.starts_with("| ")) {
 		os	<< s.substr(2);
-		return { std::string_view{}, std::string_view{}, nullptr };
+		return { std::string_view{}, std::string_view{}, nullptr, ctx };
 	} else if (auto const& ch = line->children(); s == raw_html) {
 		std::for_each(ch.cbegin(), ch.cend(), [&os](auto const& a) { os << a->tabs() << a->line() << '\n'; });
 		line->clear_children();	// Outputs raw HTML here and removes them from the tree.
@@ -341,15 +360,15 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
 		auto const	source	= load_file(pug);	// This string will be invalidated at the end of this function.
 		auto const	sub		= parse_file(source, line->nest());
-		parse_line(os, sub, path);		// Thus, output of the included pug must be finised here.
+		ctx	= parse_line(os, ctx, sub, path);		// Thus, output of the included pug must be finised here.
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, extends_re)) {
 		// Opens an including pug file from relative path of the current pug.
 		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
 		auto const	source	= load_file(pug);	// This string will be invalidated at the end of this function.
 		auto const	sub		= parse_file(source, line->nest());
-		parse_line(os, sub, path);		// Thus, output of the included pug must be finised here.
+		ctx	= parse_line(os, ctx, sub, path);		// Thus, output of the included pug must be finised here.
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, block_re)) {
-		return { std::string_view{}, to_str(s, m, 1), line };	// TODO:
+		return { std::string_view{}, to_str(s, m, 1), line, ctx };	// TODO:
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, doctype_re)) {
 		os << "<!DOCTYPE " << to_str(s, m, 1) << ">" << '\n';
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, if_re)) {
@@ -407,7 +426,7 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 			s	= s.empty() ? std::string_view{} : s.substr(2);
 			os	<< (void_tag ? " />" : ">");
 			os	<< (is_holding(line) ? "" : "\n");
-			return { s, void_tag ? std::string_view{} : tag, nullptr };
+			return { s, void_tag ? std::string_view{} : tag, nullptr, ctx };
 		}
 
 		// ID
@@ -446,23 +465,20 @@ inline std::tuple<std::string_view,std::string_view, std::shared_ptr<line_node_t
 		os	<< (void_tag ? " />" : ">");
 
 		if (s.starts_with(": ")) {
-			return { s.substr(2), void_tag ? std::string_view{} : tag, nullptr };
+			return { s.substr(2), void_tag ? std::string_view{} : tag, nullptr, ctx };
 		} else {
 			bool const	escaped = s.starts_with('=');
 			os	<< (s.starts_with(' ') ? s.substr(1) : s);
 			if ( ! is_holding(line)) {
 				os	<< '\n';
 			}
-			return { std::string_view{}, void_tag ? std::string_view{} : tag, nullptr };
+			return { std::string_view{}, void_tag ? std::string_view{} : tag, nullptr, ctx };
 		}
 	} else {
 		throw ex::syntax_error();
 	}
-	return { std::string_view{}, std::string_view{}, nullptr };
+	return { std::string_view{}, std::string_view{}, nullptr, ctx };
 }
-
-///	@brief	Map of blocks.
-using blocks_t	= std::unordered_map<std::string_view, std::shared_ptr<line_node_t>>;
 
 ///	@brief	Parses a line of pug.
 ///		The following limitations will cause syntax error.
@@ -470,38 +486,47 @@ using blocks_t	= std::unordered_map<std::string_view, std::shared_ptr<line_node_
 ///		-	This implementation supports only the following order of emenet:
 ///				-	tag#id.class.class(attr,attr)
 ///		-	This implementation supports only single line element:
-///		-	This implementation does not support inline style.
+///		-	This implementation does not support inline 'style'.
+///		-	This implementation supports the 'extends' as forward reference only.
+///				The implementation does not support default of the 'extends'.
 ///		-	This implementation supports boolean attribute as only true.
 ///			The following expressions are not supported:
 ///				-	attr=true
 ///				-	attr=false
 ///		-	This implementation supports only either the '#id' style or the '(id='..')' style in an element.
 ///		-	This implementation supports only either the '.class' style or the '(class='..')' style in an element.
-///	@param[in]	os		Output stream.
+///	@param[in.out]	os	Output stream.
+///	@param[in]	context	Parsing context.
 ///	@param[in]	line	Line of the pug.
 ///	@param[in]	path	Path of the pug.
-inline	void	parse_line(std::ostream& os, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
-	if ( ! line)		return;
+inline	context_t	parse_line(std::ostream& os, context_t const& context, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
+	if ( ! line)		return context;
 	std::regex const	comment_re{ R"(^//-[ \t]?(.*)$)" };
 	std::regex const	empty_re{ R"(^[ \t]*$)" };
 	auto const			str		= line->line();
 
-	blocks_t	blocks;
+	std::remove_const<std::remove_reference<decltype(context)>::type>::type	ctx		= context;
 
 	if (svmatch m; std::regex_match(str.cbegin(), str.cend(), m, comment_re)) {
 		os	<< line->tabs() << "<!-- " << to_str(str, m, 1) << " -->" << '\n';
 	} else {
 		std::stack<std::string_view>	tags;
-		for (auto result = std::make_tuple(str, std::string_view{}, std::shared_ptr<line_node_t>{}); !std::get<0>(result).empty();) {
-			result	= parse_element(std::get<0>(result), os, line, path);
+		for (auto result = std::make_tuple(str, std::string_view{}, std::shared_ptr<line_node_t>{}, context_t{}); !std::get<0>(result).empty();) {
+			result	= parse_element(std::get<0>(result), os, context, line, path);
 			if (auto const& block = std::get<2>(result); block) {
-				blocks.insert({ std::get<1>(result), block });
+				if (auto const& tag = std::get<1>(result); context.has_block(tag)) {
+					// TODO: increases indent.
+					std::ranges::for_each(context.block(tag)->children(), [&os, &ctx, &path](auto const& a) { ctx = parse_line(os, ctx, a, path); });
+				} else {
+					ctx.set_block(tag, block);
+					return ctx;
+				}
 			} else if (auto const& tag = std::get<1>(result); ! tag.empty()) {
 				tags.push(tag);
 			}
 		}
 		if ( ! line->children().empty()) {
-			std::ranges::for_each(line->children(), [&os, &path](auto const& a) { parse_line(os, a, path); });
+			std::ranges::for_each(line->children(), [&os, &ctx, &path](auto const& a) { ctx	= parse_line(os, ctx, a, path); });
 		}
 		for ( ; !tags.empty(); tags.pop()) {
 			if ( ! is_holding(line)) {
@@ -516,6 +541,7 @@ inline	void	parse_line(std::ostream& os, std::shared_ptr<line_node_t> line, std:
 			os	<< '\n';
 		}
 	}
+	return ctx;
 }
 
 }	// namespace impl
@@ -528,11 +554,11 @@ inline std::string		pug(std::filesystem::path const& path) {
 	auto const	root		= impl::parse_file(source);
 
 	// TODO:	impl::dump_lines(std::clog, root);
-
+	{
+		(void)impl::parse_line(std::clog, impl::context_t{}, root, path);	// TODO:
+	}
 	std::ostringstream	oss;
-	impl::parse_line(std::clog, root, path);	// TODO:
-	impl::parse_line(oss, root, path);
-
+	(void)impl::parse_line(oss, impl::context_t{}, root, path);
 	return oss.str();
 }
 
