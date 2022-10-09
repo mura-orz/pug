@@ -160,14 +160,14 @@ public:
 	auto const									parent() const noexcept { return parent_.lock(); }
 	///	@copydoc	line_node_t::push_nest()
 	auto										parent() noexcept { return parent_.lock(); }
-	///	@brief	Gets whether the node is holding or not.
-	///	@return		It returns true if the node is holding; otherwise, it returns false.
-	bool										holding() const noexcept { return holding_; }
-	///	@brief	Sets whether the node is holding or not.
-	///	@param[in]	on		Whether the node is holding or not.
-	/// @arg	true		Node is holding.
-	/// @arg	false		Node is not holding.
-	void										set_holding(bool on) noexcept { holding_ = on; }
+	///	@brief	Gets whether the node is folding or not.
+	///	@return		It returns true if the node is folding; otherwise, it returns false.
+	bool										folding() const noexcept { return folding_; }
+	///	@brief	Sets whether the node is folding or not.
+	///	@param[in]	on		Whether the node is folding or not.
+	/// @arg	true		Node is folding.
+	/// @arg	false		Node is not folding.
+	void										set_folding(bool on) noexcept { folding_ = on; }
 	///	@brief	Clears all the children.
 	void										clear_children() noexcept { children_.clear(); }
 	///	@brief	Gets the previous 'sister' line.
@@ -180,14 +180,14 @@ public:
 	///	@brief	Constructor.
 	///	@param[in]	line	Line
 	///	@param[in]	parent	Larent of this node.
-	explicit	line_node_t(line_t const& line, std::shared_ptr<line_node_t> parent) noexcept : children_{}, parent_{ parent }, line_{ line }, holding_{} {}
+	explicit	line_node_t(line_t const& line, std::shared_ptr<line_node_t> parent) noexcept : children_{}, parent_{ parent }, line_{ line }, folding_{} {}
 	///	@brief	Constructor.
-	line_node_t() noexcept : children_{}, parent_{}, line_{}, holding_{} {}
+	line_node_t() noexcept : children_{}, parent_{}, line_{}, folding_{} {}
 private:
 	std::vector<std::shared_ptr<line_node_t>>	children_;	///< @brief	Children of the node.
 	std::weak_ptr<line_node_t>					parent_;	///< @brief	Parent of the node.
 	line_t										line_;		///< @brief	Line of the node.
-	bool										holding_;	///< @brief	Whether holding or not.
+	bool										folding_;	///< @brief	Whether folding or not.
 };
 
 ///	@brief	Pops nested nodes to the @p nest or less level.
@@ -238,17 +238,17 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 			// There is nothing to do.		
 			// Drops empty line.
 		} else if (a.second.starts_with("| ")) {
-			if (parent->holding()) {
+			if (parent->folding()) {
 				if (previous->nest() != a.first) {
 					throw ex::syntax_error();
 				}
-				previous	= parent->push_nest(a, parent);			// Following holding lines are sisters.
+				previous	= parent->push_nest(a, parent);			// Following folding lines are sisters.
 			} else {
 				if (a.first < previous->nest()) {
 					throw ex::syntax_error();
 				}
-				previous->set_holding(true);
-				previous	= previous->push_nest(a, previous);		// The first holding line is a child of previous line.
+				previous->set_folding(true);
+				previous	= previous->push_nest(a, previous);		// The first folding line is a child of previous line.
 			}
 		} else if (previous->nest() == a.first) {
 			previous	= parent->push_nest(a, parent);				// This line is a sister of the previous line.
@@ -272,17 +272,17 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 	return root;
 }
 
-///	@brief	Gets the nodes is whether holding or not.
+///	@brief	Gets the nodes is whether folding or not.
 ///	@param[in]	line		A line as base point.
 ///	@param[in]	parent_only	Range of nodes to check.
-/// @arg		true		This function returns true if parent is holding regardless of the @p line holding.
-/// @arg		false		This function returns true if parent or the @p line is holding.
-///	@return		Whether holding or not. See above.
-inline bool is_holding(std::shared_ptr<line_node_t> line, bool parent_only=false) {
-	if (auto const parent = line->parent(); parent && parent->holding()) {
+/// @arg		true		This function returns true if parent is folding regardless of the @p line folding.
+/// @arg		false		This function returns true if parent or the @p line is folding.
+///	@return		Whether folding or not. See above.
+inline bool is_folding(std::shared_ptr<line_node_t> line, bool parent_only=false) {
+	if (auto const parent = line->parent(); parent && parent->folding()) {
 		return true;
 	}
-	return ! parent_only && line->holding();
+	return ! parent_only && line->folding();
 }
 
 ///	@brief	Map of blocks.
@@ -416,7 +416,7 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 		// Tag
 		auto tag		= to_str(s, m, 1);
 		auto const	void_tag = void_tags.contains(tag);
-		if ( ! is_holding(line, true)) {
+		if ( ! is_folding(line, true)) {
 			os << line->tabs();
 		}
 		os	<< "<";
@@ -431,7 +431,7 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 		if (s.empty() || s.starts_with(": ")) {
 			s	= s.empty() ? std::string_view{} : s.substr(2);
 			os	<< (void_tag ? " />" : ">");
-			os	<< (is_holding(line) ? "" : "\n");
+			os	<< (is_folding(line) ? "" : "\n");
 			return { s, os.str(), void_tag ? std::string_view{} : tag, nullptr, ctx };
 		}
 
@@ -475,7 +475,7 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 		} else {
 			bool const	escaped = s.starts_with('=');
 			os	<< (s.starts_with(' ') ? s.substr(1) : s);
-			if ( ! is_holding(line)) {
+			if ( ! is_folding(line)) {
 				os	<< '\n';
 			}
 			return { std::string_view{}, os.str(), void_tag ? std::string_view{} : tag, nullptr, ctx };
@@ -549,15 +549,15 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 					}).str();
 		}
 		for ( ; !tags.empty(); tags.pop()) {
-			if ( ! is_holding(line)) {
+			if ( ! is_folding(line)) {
 				os	<< line->tabs();
 			}
 			os	<< "</" << tags.top() << ">";
-			if ( ! is_holding(line)) {
+			if ( ! is_folding(line)) {
 				os	<< '\n';
 			}
 		}
-		if (line->holding()) {
+		if (line->folding()) {
 			os	<< '\n';
 		}
 	}
