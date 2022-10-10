@@ -9,7 +9,7 @@ namespace {
 
 ///	@brief	Gets a usage string of this program.
 ///	@return		A usage string of this program.
-constexpr inline std::string	get_usage() {
+inline std::string	get_usage() {
 	return
 		"===[ pug2html ]===  (c) 2022-, Mura." "\n" "\n"
 		"[USAGE] $ pug  (options)  {pug file}"  "\n"
