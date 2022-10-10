@@ -228,7 +228,13 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 	// Parses to tree of nested lines.
 	std::regex const	empty_re{ R"(^[ \t]*$)" };
 	(void)std::accumulate(lines.begin(), lines.end(), root, [empty_re, nest](auto&& previous, auto const& a) {
-		auto	parent = previous->parent() ? previous->parent() : previous;
+		auto	parent	= previous->parent() ? previous->parent() : previous;
+		if (a.second.starts_with("| ")) {
+			if (parent == previous) {
+				throw ex::syntax_error();		// Folding line never be the top.
+			}
+			parent->set_folding(true);			// Parent is folding.
+		}
 		if (a.second.starts_with("//-")) {
 			line_t const	line{ previous->nest(), a.second };
 			previous	= parent->push_nest(line, parent);			// Comment is always in the current level.
@@ -237,12 +243,6 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 		} else if (std::regex_match(a.second.cbegin(), a.second.cend(), empty_re)) {
 			// There is nothing to do.		
 			// Drops empty line.
-		} else if (a.second.starts_with("| ")) {
-			if (a.first < previous->nest()) {
-				throw ex::syntax_error();
-			}
-			parent->set_folding(true);
-			previous	= parent->push_nest(a, parent);				// This line is a sister of the previous line.
 		} else if (previous->nest() == a.first) {
 			previous	= parent->push_nest(a, parent);				// This line is a sister of the previous line.
 		} else if (parent->nest() < a.first) {
@@ -353,17 +353,17 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, include_re)) {
 		// Opens an including pug file from relative path of the current pug.
 		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
-		auto const	source	= load_file(pug);	// This string will be invalidated at the end of this function.
+		auto const	source	= load_file(pug);		// This string will be invalidated at the end of this function.
 		auto const	sub		= parse_file(source, line->nest());
-		auto[ss,c]	= parse_line(ctx, sub, path);		// Thus, output of the included pug must be finised here.
+		auto[ss,c]	= parse_line(ctx, sub, path);	// Thus, output of the included pug must be finised here.
 		ctx	= c;
 		os	<< ss;
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, extends_re)) {
 		// Opens an including pug file from relative path of the current pug.
 		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
-		auto const	source	= load_file(pug);	// This string will be invalidated at the end of this function.
+		auto const	source	= load_file(pug);		// This string will be invalidated at the end of this function.
 		auto const	sub		= parse_file(source, line->nest());
-		auto[ss,c]	= parse_line(ctx, sub, path);		// Thus, output of the included pug must be finised here.
+		auto[ss,c]	= parse_line(ctx, sub, path);	// Thus, output of the included pug must be finised here.
 		ctx	= c;
 		os	<< ss;
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, block_re)) {
