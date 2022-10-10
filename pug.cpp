@@ -98,7 +98,7 @@ int		main(int ac, char* av[]) {
 		} else if (1u < paths.size()) {
 			std::clog	<< get_usage() << '\n' << err::Several_pugfiles << '\n';
 		} else {
-			std::string const	pug		= xxx::pug::pug(paths.front());
+			std::string const	pug		= xxx::pug::pug_file(paths.front());
 			output(get_ouput_filename(paths.front()), pug);
 			return 0;
 		}

@@ -701,16 +701,24 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 
 }	// namespace impl
 
+///	@brief	Translates a pug string to HTML string.
+///	@param[in]	pug		Source string formatted in pug.
+///	@param[in]	path	Path of working directory.
+///	@return		String of generated HTML.
+inline std::string		pug_string(std::string_view pug, std::filesystem::path const& path = "./") {
+	auto const	root = impl::parse_file(pug);
+
+	// TODO:	impl::dump_lines(std::clog, root);
+	auto const [out, ctx] = impl::parse_line(impl::context_t{}, root, path);	// TODO:
+	return out;
+}
+
 ///	@brief	Translates a pug file to HTML string.
 ///	@param[in]	path	Path of the pug file.
 ///	@return		String of generated HTML.
-inline std::string		pug(std::filesystem::path const& path) {
+inline std::string		pug_file(std::filesystem::path const& path) {
 	auto const	source		= impl::load_file(path);
-	auto const	root		= impl::parse_file(source);
-
-	// TODO:	impl::dump_lines(std::clog, root);
-	auto const[out, ctx]	= impl::parse_line(impl::context_t{}, root, path);	// TODO:
-	return out;
+	return pug_string(source, path);
 }
 
 }	// namespace xxx::pug
