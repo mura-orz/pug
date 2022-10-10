@@ -382,6 +382,12 @@ inline std::tuple<std::string_view, std::string, std::string_view>
 
 	if (s.empty() && line->parent()) {
 		return { std::string_view{}, "\n", std::string_view{} };
+	} else if (s == def::raw_html_sv) {
+		auto const&	children	= line->children();
+		return { std::string_view{}, std::accumulate(std::ranges::cbegin(children), std::ranges::cend(children), std::ostringstream{}, [](auto&&os, auto const& a) {
+				os	<< a->tabs() << a->line() << '\n';
+				return std::move(os);
+			}).str(), std::string_view{} };
 	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, def::doctype_re)) {
 		// This implementation allows it is nested by the ': ' sequense.
 		std::ostringstream	os;
@@ -513,12 +519,6 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, def::comment_re)) {
 		auto const	out = line->tabs() + "<!-- " + std::string{ to_str(s, m, 1) } + " -->" + '\n';
 		return { out, context };
-	} else if (s == def::raw_html_sv) {
-		auto const&	children	= line->children();
-		return { std::accumulate(std::ranges::cbegin(children), std::ranges::cend(children), std::ostringstream{}, [](auto&&os, auto const& a) {
-				os	<< a->tabs() << a->line() << '\n';
-				return std::move(os);
-			}).str(), context};
 	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, def::include_re)) {
 		// Opens an including pug file from relative path of the current pug.
 		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
