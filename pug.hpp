@@ -52,6 +52,35 @@ public:
 
 }	// namespace ex
 namespace impl {
+namespace def {
+	static std::set<std::string_view> const	void_tags{ "br", "hr", "img", "meta", "input", "link", "area", "base", "col", "embed", "param", "source", "track", "wbr" };
+	static std::string_view const	raw_html_sv{ "." };
+	static std::string_view const	folding_sv{ "| " };
+	static std::string_view const	default_sv{ "default" };
+
+	static std::regex const	doctype_re{ R"(^[dD][oO][cC][tT][yY][pP][eE] ([A-Za-z0-9_]+)$)" };
+	static std::regex const	tag_re{ R"(^([#.]?[A-Za-z0-9_-]+))" };
+	static std::regex const	attr_re{ R"(^([A-Za-z0-9_-]+)(=['"][^'"]*['"])?[ ,]*)" };
+	static std::regex const	id_re{ R"(^#([A-Za-z0-9_-]+))" };
+	static std::regex const	class_re{ R"(^\.([A-Za-z0-9_-]+))" };
+
+	static std::regex const	nest_re{ R"(^([\t]*)(.*)$)" };	///	@brief	This implementation supports only tabs as indent.
+	static std::regex const	comment_re{ R"(^//-[ \t]?(.*)$)" };
+	static std::regex const	empty_re{ R"(^[ \t]*$)" };
+	static std::regex const	case_re{ R"(^case[ \t]+([A-Za-z_][A-Za-z0-9_]*)$)" };
+	static std::regex const	when_re{ R"(^when[ \t]+(["'])([A-Za-z_][A-Za-z0-9_]*)(["'])$)" };
+	static std::regex const	break_re{ R"(^-[ \t]+break$)" };
+	static std::regex const	if_re{ R"(^if[ \t]+(.*)$)" };
+	static std::regex const	elif_re{ R"(^else[v \t]+if[ \t]+(.*)$)" };
+	static std::regex const	else_re{ R"(^else[ \t]+(.*)$)" };
+	static std::regex const	each_re{ R"(^each[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*in[ \t]*\[([^\]]*)\]$)" };
+	static std::regex const	for_re{ R"(^-[ \t]+for[ \t]*\(var[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+);([ \tA-Za-z0-9_+*/%=<>!-]*);([ \tA-Za-z0-9_+*/%=<>!-]*)\)$)" };
+	static std::regex const	var_re{ R"(^-[ \t]+var[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+)$)" };
+	static std::regex const	const_re{ R"(^-[ \t]+const[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+)$)" };
+	static std::regex const	include_re{ R"(^include[ \t]+([^ ]+)$)" };
+	static std::regex const	block_re{ R"(^block[ \t]+([^ ]+)$)" };
+	static std::regex const	extends_re{ R"(^extends[ \t]+([^ ]+)$)" };
+}	// namespace def
 
 ///	@brief	Reads the file as string.
 ///	@param[in]	path	Path of the file to read.
@@ -82,12 +111,18 @@ inline std::string		load_file(std::filesystem::path const& path) {
 ///	@warning	Keep original string available because it returns view of the string.
 inline std::vector<std::string_view>	split_lines(std::string_view const str) {
 	std::vector<std::string_view>	v;
-	v.reserve(str.size());
-	std::ranges::for_each(str | std::views::split(std::views::single('\n')) | std::views::common, [&v](auto const& line) {
-			auto const	crlf	= ( ! line.empty() && line.back() == '\r');
-			auto		end		= line.end();
-			v.emplace_back(std::string_view{ line.begin(), crlf ? --end : end});
-		});
+	std::string_view		s	= str;
+	for (auto pos = s.find('\n'); pos != std::string_view::npos; pos = s.find('\n')) {
+		auto const	line	= s.substr(0, pos);
+		s	= s.substr(pos + 1);
+		if (line.empty())					continue;
+		auto const	crlf	= line.back() == '\r';
+		if (crlf && line.size() == 1u)		continue;
+		v.push_back(crlf ? line.substr(0, line.size() - 1) : line);
+	}
+	if ( ! s.empty()) {
+		v.push_back(s);
+	}
 	return v;
 }
 
@@ -115,16 +150,12 @@ inline std::string_view		to_str(std::string_view s, svmatch const& m, std::size_
 	return n < m.size() ? s.substr(m.position(n), m.length(n)) : std::string_view{};
 }
 
-///	@brief	Regular expression of nested line.
-///		This implementation supports only tabs as indent.
-std::regex const	nest_re{ "^([\t]*)(.*)$" };
-
 ///	@brief	Gets a nested line from a raw line string.
 ///	@param[in]	line	A raw line string.
 ///	@return		Nested line.
 ///	@warning	Keep original string available because it returns view of the string.
 inline line_t	get_line_nest(std::string_view const line) {
-	if (svmatch m; std::regex_match(line.cbegin(), line.cend(), m, nest_re)) {
+	if (svmatch m; std::regex_match(line.cbegin(), line.cend(), m, def::nest_re)) {
 		return { m.length(1), to_str(line, m, 2) };
 	} else {
 		return { 0u, line };
@@ -153,7 +184,7 @@ public:
 	auto&										push_nest(line_t&& line, std::shared_ptr<line_node_t> parent)		{	children_.emplace_back(std::make_shared<line_node_t>(line, parent)); return children_.back(); }
 	///	@brief	Gets the children of the node.
 	///	@return		the children of the node.
-	auto const&									children() const noexcept { return children_; }
+	std::vector<std::shared_ptr<line_node_t const>>		children() const noexcept { return std::vector<std::shared_ptr<line_node_t const>>(children_.cbegin(), children_.cend()); }
 	///	@brief	Gets the parent of the node.
 	///	@return		the parent of the node.
 	///				It ruturns null if the node is the root of nodes.
@@ -222,12 +253,12 @@ inline void dump_lines(std::ostream& os, std::shared_ptr<line_node_t const> node
 ///	@return		The root of parsed nodes.
 ///	@warning	Keep original string available because it returns view of the string.
 inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nest=0u) {
-	auto		root	= std::make_shared<line_node_t>(line_t{ nest, std::string_view{} }, nullptr);
-	auto const	lines	= split_lines(pug) | std::views::transform(&get_line_nest) | std::views::transform([nest](auto const& a) { return line_t{ a.first + nest, a.second }; });
+	auto		root		= std::make_shared<line_node_t>(line_t{ nest, std::string_view{} }, nullptr);
+	auto const	raw_lines	= split_lines(pug);
+	auto const	lines		= raw_lines | std::views::transform(&get_line_nest) | std::views::transform([nest](auto const& a) { return line_t{ a.first + nest, a.second }; });
 
 	// Parses to tree of nested lines.
-	std::regex const	empty_re{ R"(^[ \t]*$)" };
-	(void)std::accumulate(lines.begin(), lines.end(), root, [empty_re, nest](auto&& previous, auto const& a) {
+	(void)std::accumulate(lines.begin(), lines.end(), root, [nest](auto&& previous, auto const& a) {
 		auto	parent	= previous->parent() ? previous->parent() : previous;
 		if (a.second.starts_with("| ")) {
 			if (parent == previous) {
@@ -240,7 +271,7 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 			previous	= parent->push_nest(line, parent);			// Comment is always in the current level.
 		} else if (a.second.starts_with("//")) {
 			// There is nothing to do.								// Drops pug comment.
-		} else if (std::regex_match(a.second.cbegin(), a.second.cend(), empty_re)) {
+		} else if (std::regex_match(a.second.cbegin(), a.second.cend(), def::empty_re)) {
 			// There is nothing to do.		
 			// Drops empty line.
 		} else if (previous->nest() == a.first) {
@@ -271,146 +302,98 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 /// @arg		true		This function returns true if parent is folding regardless of the @p line folding.
 /// @arg		false		This function returns true if parent or the @p line is folding.
 ///	@return		Whether folding or not. See above.
-inline bool is_folding(std::shared_ptr<line_node_t> line, bool parent_only=false) {
+inline bool is_folding(std::shared_ptr<line_node_t const> line, bool parent_only=false) {
 	if (auto const parent = line->parent(); parent && parent->folding()) {
 		return true;
 	}
 	return ! parent_only && line->folding();
 }
 
-///	@brief	Map of blocks.
-using blocks_t = std::unordered_map<std::string_view, std::shared_ptr<line_node_t>>;
-
 ///	@brief	Parsing context,
 class context_t {
+	///	@brief	Map of blocks.
+	using blocks_t		= std::unordered_map<std::string_view, std::shared_ptr<line_node_t const>>;
+	///	@brief	Map of blocks.
+	using variables_t	= std::unordered_map<std::string_view, std::string>;
 public:
-	auto const& block(std::string_view tag) const { return blocks_.at(tag); }
+	// ------------------------------
+	// Block for expands
+
+	///	@brief	Gets the block.
+	///	@param[in]	tag		Name of the block.
+	///	@return		The block.
+	auto const&		block(std::string_view tag) const { return blocks_.at(tag); }
+	///	@brief	Has the block or not.
+	///	@param[in]	tag		Name of the block.
+	///	@return		It returns true if the block exists; otherwise, it returns false.
 	bool			has_block(std::string_view tag) const noexcept { return blocks_.contains(tag); }
-	void			set_block(std::string_view tag, std::shared_ptr<line_node_t> block) {
+	///	@brief	Sets the block.
+	///	@param[in]	tag		Name of the block. Empty is invalid.
+	///	@param[in]	block	Line of the block.
+	void			set_block(std::string_view tag, std::shared_ptr<line_node_t const> block) {
 		if (tag.empty())	throw std::invalid_argument(__func__);
-		blocks_[tag] = block;
+		blocks_[tag]	= block;
 	}
-	context_t() noexcept : blocks_{} {}
+
+	// ------------------------------
+	// Variables.
+
+	///	@brief	Gets the variable.
+	///	@param[in]	tag		Name of the variable.
+	///	@return		Value of the variable.
+	auto const&		variable(std::string_view tag) const { return variables_.at(tag); }
+	///	@brief	Has the variable or not.
+	///	@param[in]	tag		Name of the variable.
+	///	@return		It returns true if the variable exists; otherwise, it returns false.
+	bool			has_variable(std::string_view tag) const noexcept { return variables_.contains(tag); }
+	///	@brief	Sets the variable.
+	///	@param[in]	tag		Name of the variable. Empty is invalid.
+	///	@param[in]	block	Line of the variable.
+	void			set_variable(std::string_view tag, std::string_view variable) {
+		if (tag.empty())	throw std::invalid_argument(__func__);
+		variables_[tag]	= variable;
+	}
+	///	@brief	Constructor.
+	context_t() noexcept : blocks_{}, variables_{} {}
 private:
-	blocks_t	blocks_;	///< @brief	Blocks.
+	blocks_t		blocks_;		///< @brief	Blocks.
+	variables_t		variables_;		///< @brief	Variables.
 };
 
-std::tuple<std::string,context_t>	parse_line(context_t const&, std::shared_ptr<line_node_t>, std::filesystem::path const&);
+std::tuple<std::string,context_t>	parse_line(context_t const&, std::shared_ptr<line_node_t const>, std::filesystem::path const&);
 
 ///	@brief	Parses a element from the @p line.
 ///		This implementation supports only the following order:
 ///			tag#id.class.class(attr,attr)
 ///		This implementation supports only single line element:
-///	@param[in]	s		Pug.
-///	@param[in]	context	Parsing context.
+///		Only element can be nested by ': '.
+///	@param[in]	s		Pug source.
 ///	@param[in]	line	Line of the pug.
-///	@param[in]	path	Path of the pug.
+///	@param[in]	context	Parsing context.
 ///	@return		It returns the followings:
 ///		-#	Remaingin string of the line.
 ///		-#	Output stream.
-///		-#	Tag name to close later, or block name.
-///		-#	The root node of block.
-///		-#	Parsing context.
-///	@todo	The 'var' directive.
-///	@todo	The 'for' directive.
-///	@todo	The 'each' directive.
-///	@todo	The 'switch' directive.
-///	@todo	The 'if'-'else' directives.
-///	@todo	The 'mixin' directive.
+///		-#	Tag name to close later.
 ///	@todo	The '=' directive.
 ///	@warning	Keep original string available because it returns view of the string.
-inline std::tuple<std::string_view, std::string, std::string_view, std::shared_ptr<line_node_t>, context_t>	parse_element(std::string_view s, context_t const& context, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
+inline std::tuple<std::string_view, std::string, std::string_view>
+		parse_element(std::string_view s, std::shared_ptr<line_node_t const> line) {
 	if ( ! line)	throw std::invalid_argument(__func__);
-	std::set<std::string_view> const	void_tags{ "br", "hr", "img", "meta", "input", "link", "area", "base", "col", "embed", "param", "source", "track", "wbr" };
-	std::string_view const	raw_html{ "." };
-	std::regex const	include_re{ R"(^include[ \t]+([^ ]+)$)" };
-	std::regex const	block_re{ R"(^block[ \t]+([^ ]+)$)" };
-	std::regex const	extends_re{ R"(^extends[ \t]+([^ ]+)$)" };
-	std::regex const	doctype_re{ R"(^[dD][oO][cC][tT][yY][pP][eE] ([A-Za-z0-9_]+)$)" };
-	std::regex const	switch_re{ R"(^case[ \t]+([A-Za-z_][A-Za-z0-9_]*)$)" };
-	std::regex const	if_re{ R"(^if[ \t]+(.*)$)" };
-	std::regex const	elif_re{ R"(^else if[ \t]+(.*)$)" };
-	std::regex const	else_re{ R"(^else[ \t]+(.*)$)" };
-	std::regex const	each_re{ R"(^each[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*in[ \t]*\[([^\]]*)\]$)" };
-	std::regex const	for_re{ R"(^-[ \t]+for[ \t]*\(var[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+);[ \tA-Za-z0-9_+*/%=<>!-]*;\)$)" };
-	std::regex const	var_re{ R"(^-[ \t]+var[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+)$)" };
-	std::regex const	tag_re{ R"(^([#.]?[A-Za-z0-9_-]+))"};
-	std::regex const	attr_re{ R"(^([A-Za-z0-9_-]+)(=['"][^'"]*['"])?[ ,]*)" };
-	std::regex const	id_re{ R"(^#([A-Za-z0-9_-]+))" };
-	std::regex const	class_re{ R"(^\.([A-Za-z0-9_-]+))" };
-
-	std::ostringstream	os;
-	std::remove_const<std::remove_reference<decltype(context)>::type>::type	ctx = context;
 
 	if (s.empty() && line->parent()) {
-		os	<< '\n';
-	} else if (s.starts_with("| ")) {
-		os	<< s.substr(2);
-		return { std::string_view{}, os.str(), std::string_view{}, nullptr, ctx };
-	} else if (auto const& ch = line->children(); s == raw_html) {
-		std::for_each(ch.cbegin(), ch.cend(), [&os](auto const& a) { os << a->tabs() << a->line() << '\n'; });
-		line->clear_children();	// Outputs raw HTML here and removes them from the tree.
-	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, include_re)) {
-		// Opens an including pug file from relative path of the current pug.
-		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
-		auto const	source	= load_file(pug);		// This string will be invalidated at the end of this function.
-		auto const	sub		= parse_file(source, line->nest());
-		auto[ss,c]	= parse_line(ctx, sub, path);	// Thus, output of the included pug must be finised here.
-		ctx	= c;
-		os	<< ss;
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, extends_re)) {
-		// Opens an including pug file from relative path of the current pug.
-		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
-		auto const	source	= load_file(pug);		// This string will be invalidated at the end of this function.
-		auto const	sub		= parse_file(source, line->nest());
-		auto[ss,c]	= parse_line(ctx, sub, path);	// Thus, output of the included pug must be finised here.
-		ctx	= c;
-		os	<< ss;
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, block_re)) {
-		return { std::string_view{}, os.str(), to_str(s, m, 1), line, ctx };	// TODO:
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, doctype_re)) {
-		os << "<!DOCTYPE " << to_str(s, m, 1) << ">" << '\n';
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, if_re)) {
-		// TODO:
-		std::ranges::for_each(line->children(), [&os](auto const& a) {
-			os	<< "<!-- TODO: if " << a->line() << " -->" << '\n';
-		});
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, elif_re)) {
-		// TODO:
-		std::ranges::for_each(line->children(), [&os](auto const& a) {
-			os	<< "<!-- TODO: else-if " << a->line() << " -->" << '\n';
-		});
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, else_re)) {
-		// TODO:
-		std::ranges::for_each(line->children(), [&os](auto const& a) {
-			os	<< "<!-- TODO: else " << a->line() << " -->" << '\n';
-		});
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, switch_re)) {
-		// TODO:
-		std::ranges::for_each(line->children(), [&os](auto const& a) {
-			os	<< "<!-- TODO: switch-case " << a->line() << " -->" << '\n';
-		});
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, for_re)) {
-		// TODO:
-		std::ranges::for_each(line->children(), [&os](auto const& a) {
-			os	<< "<!-- TODO: for " << a->line() << " -->" << '\n';
-		});
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, each_re)) {
-		// TODO:
-		std::ranges::for_each(line->children(), [&os](auto const& a) {
-			os	<< "<!-- TODO: each " << a->line() << " -->" << '\n';
-		});
-	} else if (std::regex_match(s.cbegin(), s.cend(), m, var_re)) {
-		// TODO:
-		std::ranges::for_each(line->children(), [&os](auto const& a) {
-			os	<< "<!-- TODO: var " << a->line() << " -->" << '\n';
-		});
-	} else if (std::regex_search(s.cbegin(), s.cend(), m, tag_re)) {
+		return { std::string_view{}, "\n", std::string_view{} };
+	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, def::doctype_re)) {
+		// This implementation allows it is nested by the ': ' sequense.
+		std::ostringstream	os;
+		os	<< "<!DOCTYPE " << to_str(s, m, 1) << ">" << '\n';
+		return { std::string_view{}, os.str(), std::string_view{} };
+	} else if (std::regex_search(s.cbegin(), s.cend(), m, def::tag_re)) {
 		// Tag
-		auto tag		= to_str(s, m, 1);
-		auto const	void_tag = void_tags.contains(tag);
+		auto tag				= to_str(s, m, 1);
+		auto const	void_tag	= def::void_tags.contains(tag);
+		std::ostringstream	os;
 		if ( ! is_folding(line, true)) {
-			os << line->tabs();
+			os	<< line->tabs();
 		}
 		os	<< "<";
 		if (tag.starts_with('.') || tag.starts_with('#')) {
@@ -425,11 +408,11 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 			s	= s.empty() ? std::string_view{} : s.substr(2);
 			os	<< (void_tag ? " />" : ">");
 			os	<< (is_folding(line) ? "" : "\n");
-			return { s, os.str(), void_tag ? std::string_view{} : tag, nullptr, ctx };
+			return {s, os.str(), void_tag ? std::string_view{} : tag};
 		}
 
 		// ID
-		if (std::regex_search(s.cbegin(), s.cend(), m, id_re)) {
+		if (std::regex_search(s.cbegin(), s.cend(), m, def::id_re)) {
 			os	<< R"( id=")" << to_str(s, m, 1) << R"(")";
 			s	= s.substr(m.length());
 		}
@@ -437,7 +420,7 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 		if (s.starts_with('.')) {
 			os	<< R"( class=")";
 			bool	first	= true;
-			for (; std::regex_search(s.cbegin(), s.cend(), m, class_re); s = s.substr(m.length())) {
+			for (; std::regex_search(s.cbegin(), s.cend(), m, def::class_re); s = s.substr(m.length())) {
 				if ( ! first) {
 					os	<< ' ';
 				}
@@ -449,9 +432,10 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 		// Attributes
 		if (s.starts_with('(')) {
 			s	= s.substr(1);
-			for ( ; std::regex_search(s.cbegin(), s.cend(), m, attr_re); s = s.substr(m.length())) {
+			for ( ; std::regex_search(s.cbegin(), s.cend(), m, def::attr_re); s = s.substr(m.length())) {
 				os	<< " " << to_str(s, m, 1);
 				if (auto const parameter = to_str(s, m, 2); 1u < parameter.size()) {
+					if (parameter.at(1) != parameter.back())	throw ex::syntax_error();
 					os	<< R"(=")" << parameter.substr(2, parameter.size()-3) << R"(")";
 				}
 			}
@@ -464,19 +448,34 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 		os	<< (void_tag ? " />" : ">");
 
 		if (s.starts_with(": ")) {
-			return { s.substr(2), os.str(), void_tag ? std::string_view{} : tag, nullptr, ctx };
+			return {s.substr(2), os.str(), void_tag ? std::string_view{} : tag};
 		} else {
 			bool const	escaped = s.starts_with('=');
 			os	<< (s.starts_with(' ') ? s.substr(1) : s);
 			if ( ! is_folding(line)) {
 				os	<< '\n';
 			}
-			return { std::string_view{}, os.str(), void_tag ? std::string_view{} : tag, nullptr, ctx };
+			return {std::string_view{}, os.str(), void_tag ? std::string_view{} : tag};
 		}
 	} else {
 		throw ex::syntax_error();
 	}
-	return { std::string_view{}, os.str(), std::string_view{}, nullptr, ctx };
+}
+
+///	@brief	Parses children of the @p line.
+///	@param[in]	context		Parsing context. It is not contant reference but copied.
+///	@param[in]	children	Lines of children.
+///	@param[in]	path		Path of the pug.
+/// @return		It returns the following:
+///		-#	Generated HTLM string
+///		-#	Context.
+inline	std::tuple<std::string, context_t>	parse_children(context_t context, std::vector<std::shared_ptr<line_node_t const>> const& children, std::filesystem::path const& path) {
+	return { std::accumulate(std::ranges::cbegin(children), std::ranges::cend(children), std::ostringstream{}, [&context, &path](auto&& os, auto const& a) {
+			auto const[s, c]	= parse_line(context, a, path);
+			context = c;
+			os	<< s;
+			return std::move(os);
+		}).str(), context };
 }
 
 ///	@brief	Parses a line of pug.
@@ -497,64 +496,207 @@ inline std::tuple<std::string_view, std::string, std::string_view, std::shared_p
 ///	@param[in]	context	Parsing context.
 ///	@param[in]	line	Line of the pug.
 ///	@param[in]	path	Path of the pug.
-inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, std::shared_ptr<line_node_t> line, std::filesystem::path const& path) {
+/// @return		It returns the following:
+///		-#	Generated HTLM string
+///		-#	Context.
+///	@todo	The 'var' directive.
+///	@todo	The 'for' directive.
+///	@todo	The 'each' directive.
+///	@todo	The 'switch' directive.
+///	@todo	The 'if'-'else' directives.
+///	@todo	The 'mixin' directive.
+inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, std::shared_ptr<line_node_t const> line, std::filesystem::path const& path) {
 	if ( ! line)		return { std::string{}, context };
-	std::regex const	comment_re{ R"(^//-[ \t]?(.*)$)" };
-	std::regex const	empty_re{ R"(^[ \t]*$)" };
-	auto const			str		= line->line();
 
-	std::ostringstream	os;
-	std::remove_const<std::remove_reference<decltype(context)>::type>::type	ctx		= context;
+	if (auto const& s = line->line(); s.starts_with(def::folding_sv)) {
+		return { std::string{s.substr(2)}, context };
+	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, def::comment_re)) {
+		auto const	out = line->tabs() + "<!-- " + std::string{ to_str(s, m, 1) } + " -->" + '\n';
+		return { out, context };
+	} else if (s == def::raw_html_sv) {
+		auto const&	children	= line->children();
+		return { std::accumulate(std::ranges::cbegin(children), std::ranges::cend(children), std::ostringstream{}, [](auto&&os, auto const& a) {
+				os	<< a->tabs() << a->line() << '\n';
+				return std::move(os);
+			}).str(), context};
+	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, def::include_re)) {
+		// Opens an including pug file from relative path of the current pug.
+		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
+		auto const	source	= load_file(pug);		// This string will be invalidated at the end of this function.
+		auto const	sub		= parse_file(source, line->nest());
+		return parse_line(context, sub, path);	// Thus, output of the included pug must be finised here.
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::extends_re)) {
+		// Opens an including pug file from relative path of the current pug.
+		auto const	pug		= std::filesystem::path{ path }.replace_filename(to_str(s, m, 1));
+		auto const	source	= load_file(pug);		// This string will be invalidated at the end of this function.
+		auto const	sub		= parse_file(source, line->nest());
+		return parse_line(context, sub, path);	// Thus, output of the included pug must be finised here.
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::block_re)) {
+		if (auto const& tag = to_str(s, m, 1); context.has_block(tag)) {
+			// TODO: increases indent.
+			return parse_children(context, context.block(tag)->children(), path);
+		} else {
+			context_t	ctx			= context;
+			ctx.set_block(tag, line);
+			return { std::string{}, ctx };
+		}
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::if_re)) {
+		// Is statement
+		{
+			auto const&	expression	= to_str(s, m, 1);
+			auto const	condition	= true;	// TODO:
+			if (condition) {
+				// Ignores following elses.
+				return parse_children(context, line->children(), path);
+			}
+		}
 
-	if (svmatch m; std::regex_match(str.cbegin(), str.cend(), m, comment_re)) {
-		os	<< line->tabs() << "<!-- " << to_str(str, m, 1) << " -->" << '\n';
-	} else {
-		std::stack<std::string_view>	tags;
-		for (auto result = std::make_tuple(str, std::string{}, std::string_view{}, std::shared_ptr<line_node_t>{}, context_t{}); !std::get<0>(result).empty();) {
-			result	= parse_element(std::get<0>(result), context, line, path);
-			ctx = std::get<4>(result);
-			if (auto const& block = std::get<3>(result); block) {
-				if (auto const& tag = std::get<2>(result); ctx.has_block(tag)) {
-					// TODO: increases indent.
-					os	<< std::accumulate(std::ranges::cbegin(ctx.block(tag)->children()), std::ranges::cend(ctx.block(tag)->children()), std::ostringstream{},
-						[&ctx, &path](auto&& ss, auto const& a) {
-							auto [s, c] = parse_line(ctx, a, path);
-							ctx = c;
-							ss << s;
-							return std::move(ss);
-						}).str();
+		// Collects else-if and elses.
+		std::vector<std::pair<std::string_view, std::shared_ptr<line_node_t const>>>	elifs;
+		std::shared_ptr<line_node_t const>												else_;
+		{
+			auto const	parent	= line->parent();
+			if ( ! parent)		throw ex::syntax_error();
+			auto const&		children	= line->children();
+			for (auto itr = std::ranges::find(children, line), end = std::ranges::cend(children); itr != end; ++itr) {
+				auto const&		line	= (*itr)->line();
+				if (svmatch m; std::regex_match(line.cbegin(), line.cend(), m, def::elif_re)) {
+					if (else_)	throw ex::syntax_error();		// The 'else' appears at only the end of the sequence.
+					elifs.push_back({to_str(line, m, 1), *itr});
+				} else if (std::regex_match(line.cbegin(), line.cend(), m, def::else_re)) {
+					if (else_)	throw ex::syntax_error();		// The 'else' appears only once.
+					else_	= *itr;
 				} else {
-					ctx.set_block(tag, block);
-					return { os.str(), ctx };
+					break;
 				}
-			} else if (auto const& tag = std::get<2>(result); ! tag.empty()) {
+			}
+		}
+		for (auto const& elif : elifs) {
+			auto const&	expression	= elif.first;
+			auto const	condition	= true;	// TODO:
+			if (condition) {
+				return parse_children(context, line->children(), path);
+			}
+		}
+		if (else_) {
+			return parse_children(context, else_->children(), path);
+		} else {
+			return { std::string{}, context };
+		}
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::elif_re)) {
+		// There is nothing to do because it is handled at if directive. 
+		return { std::string{}, context };
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::else_re)) {
+		// There is nothing to do because it is handled at if directive. 
+		return { std::string{}, context };
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::case_re)) {
+		auto const	var			= to_str(s, m, 0);
+		// TODO:
+		using	cases_t = std::vector<std::pair<std::string_view, std::shared_ptr<line_node_t const>>>;;
+		auto const	contains = [](cases_t const& cases, std::string_view tag) {
+			return std::ranges::find_if(cases, [tag](auto const& a) { return a.first == tag; }) != std::ranges::cend(cases);
+		};
+		auto const&	children	= line->children();
+		auto const	cases		= std::accumulate(std::ranges::cbegin(children), std::ranges::cend(children), cases_t{}, [contains](auto&& out, auto const& a) {
+				if (auto const& ss = a->line(); ss == def::default_sv) {
+					if (contains(out, std::string_view{}))		throw ex::syntax_error();
+					out.push_back({std::string_view{}, a});
+				} else if (svmatch mm; std::regex_match(ss.cbegin(), ss.cend(), mm, def::when_re)) {
+					if (to_str(ss, mm, 0) != to_str(ss, mm, 2)) {
+						throw ex::syntax_error();
+					}
+					auto const	label	= to_str(a->line(), mm, 1);
+					if (contains(out, label))		throw ex::syntax_error();
+					out.push_back({ label, a });
+				} else {
+					throw ex::syntax_error();
+				}
+				return std::move(out);
+			});
+		auto const	parse_cases = [](context_t context, cases_t const& cases, std::string_view label, std::filesystem::path const& path) -> std::tuple<std::string, context_t> {
+			for (auto itr = std::ranges::find_if(cases, [label](auto const& a) { return a.first == label; }); itr != std::ranges::cend(cases); ++itr) {
+				auto const& children	= itr->second->children();
+				if (children.empty())	continue;
+				auto const&	line		= children.front()->line();
+				if (svmatch mm; std::regex_match(line.cbegin(), line.cend(), mm, def::break_re)) {
+					break;
+				}
+				return parse_children(context, children, path);
+			}
+			return { std::string{}, context };
+		};
+		if (contains(cases, var)) {
+			return parse_cases(context, cases, var, path);
+		} else if (contains(cases, std::string_view{})) {
+			return parse_cases(context, cases, std::string_view{}, path);
+		} else {
+			return { std::string{}, context };
+		}
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::for_re)) {
+		auto const	var			= to_str(s, m, 0);
+		auto const	initial		= to_str(s, m, 1);
+		auto const	condition	= to_str(s, m, 2);
+		auto const	advance		= to_str(s, m, 3);
+		// TODO:
+		return parse_children(context, line->children(), path);
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::each_re)) {
+		// TODO:
+		auto const& name	= to_str(s, m, 1);
+		std::istringstream	iss(std::string{ to_str(s, m, 2) });
+		std::vector<std::string>	items;
+		for (std::string item; std::getline(iss, item, ','); ) {
+			auto const	begin	= item.find_first_not_of(" \t");
+			if (begin == std::string::npos)	throw ex::syntax_error();
+			auto const	end		= item.find_last_not_of(" \t,");
+			items.emplace_back(item.substr(begin, end - begin));
+		}
+
+		if (items.empty()) {
+			return { std::string{}, context };
+		}
+		context_t	ctx		= context;
+		auto const	outs	= items | std::views::transform([&ctx, name, &line, &path](auto const& a) {
+			ctx.set_variable(name, a);
+			return parse_children(ctx, line->children(), path);
+		});
+		return { std::accumulate(std::ranges::cbegin(outs), std::ranges::cend(outs), std::ostringstream{}, [](auto&& os, auto const& a) {
+				os	<< std::get<0>(a);
+				return std::move(os);
+			}).str(), std::get<1>(outs.back()) };
+	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::var_re) || std::regex_match(s.cbegin(), s.cend(), m, def::const_re)) {
+		auto const& name	= to_str(s, m, 1);
+		auto const& value	= to_str(s, m, 2);
+		context_t	ctx	= context;
+		ctx.set_variable(name, value);
+		return { std::string{}, ctx };
+	} else {
+		std::ostringstream				oss;
+		std::stack<std::string_view>	tags;
+		for (auto result = std::make_tuple(s, std::string{}, std::string_view{}); ! std::get<0>(result).empty(); ) {
+			result	= parse_element(std::get<0>(result), line);
+			if (auto const& tag = std::get<2>(result); ! tag.empty()) {
 				tags.push(tag);
 			}
-			os	<< std::get<1>(result);
+			oss	<< std::get<1>(result);
 		}
-		if ( ! line->children().empty()) {
-			os	<< std::accumulate(std::ranges::cbegin(line->children()), std::ranges::cend(line->children()), std::ostringstream{},
-					[&ctx, &path](auto&& ss, auto const& a) {
-						auto [s,c]	= parse_line(ctx, a, path);
-						ctx	= c;
-						ss	<< s;
-						return std::move(ss);
-					}).str();
-		}
+
+		auto const[ss,ctx]	= parse_children(context, line->children(), path);
+		oss << ss;
+
 		for ( ; !tags.empty(); tags.pop()) {
 			if ( ! is_folding(line)) {
-				os	<< line->tabs();
+				oss	<< line->tabs();
 			}
-			os	<< "</" << tags.top() << ">";
+			oss	<< "</" << tags.top() << ">";
 			if ( ! is_folding(line)) {
-				os	<< '\n';
+				oss	<< '\n';
 			}
 		}
 		if (line->folding()) {
-			os	<< '\n';
+			oss	<< '\n';
 		}
+		return { oss.str(), ctx };
 	}
-	return { os.str(), ctx };
 }
 
 }	// namespace impl
