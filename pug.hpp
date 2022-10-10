@@ -238,18 +238,11 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 			// There is nothing to do.		
 			// Drops empty line.
 		} else if (a.second.starts_with("| ")) {
-			if (parent->folding()) {
-				if (previous->nest() != a.first) {
-					throw ex::syntax_error();
-				}
-				previous	= parent->push_nest(a, parent);			// Following folding lines are sisters.
-			} else {
-				if (a.first < previous->nest()) {
-					throw ex::syntax_error();
-				}
-				previous->set_folding(true);
-				previous	= previous->push_nest(a, previous);		// The first folding line is a child of previous line.
+			if (a.first < previous->nest()) {
+				throw ex::syntax_error();
 			}
+			parent->set_folding(true);
+			previous	= parent->push_nest(a, parent);				// This line is a sister of the previous line.
 		} else if (previous->nest() == a.first) {
 			previous	= parent->push_nest(a, parent);				// This line is a sister of the previous line.
 		} else if (parent->nest() < a.first) {
