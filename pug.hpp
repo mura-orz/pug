@@ -628,7 +628,7 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 			});
 		auto const	parse_cases = [](context_t context, cases_t const& cases, std::string_view label, std::filesystem::path const& path) -> std::tuple<std::string, context_t> {
 			for (auto itr = std::ranges::find_if(cases, [label](auto const& a) { return a.first == label; }); itr != std::ranges::cend(cases); ++itr) {
-				auto const& children	= itr->second->children();
+				auto const&	children	= itr->second->children();
 				if (children.empty())	continue;
 				auto const&	line		= children.front()->line();
 				if (svmatch mm; std::regex_match(line.cbegin(), line.cend(), mm, def::break_re)) {
@@ -654,7 +654,7 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 		return parse_children(context, line->children(), path);
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::each_re)) {
 		// TODO:
-		auto const& name	= to_str(s, m, 1);
+		auto const&	name	= to_str(s, m, 1);
 		std::istringstream	iss(std::string{ to_str(s, m, 2) });
 		std::vector<std::string>	items;
 		for (std::string item; std::getline(iss, item, ','); ) {
@@ -719,10 +719,8 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 ///	@param[in]	path	Path of working directory.
 ///	@return		String of generated HTML.
 inline std::string		pug_string(std::string_view pug, std::filesystem::path const& path = "./") {
-	auto const	root = impl::parse_file(pug);
-
-	// TODO:	impl::dump_lines(std::clog, root);
-	auto const [out, ctx]	= impl::parse_line(impl::context_t{}, root, path);	// TODO:
+	auto const	root		= impl::parse_file(pug);
+	auto const[out, ctx]	= impl::parse_line(impl::context_t{}, root, path);
 	return out;
 }
 
