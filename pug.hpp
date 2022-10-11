@@ -58,30 +58,34 @@ namespace def {
 
 	static std::string_view const	raw_html_sv{ "." };
 	static std::string_view const	folding_sv{ "| " };
+	static std::string_view const	comment_sv{ "//-" };
+	static std::string_view const	raw_comment_sv{ "//" };
+	static std::string_view const	var_sv{ "#{" };
 	static std::string_view const	default_sv{ "default" };
 
 	static std::regex const	doctype_re{ R"(^[dD][oO][cC][tT][yY][pP][eE] ([A-Za-z0-9_]+)$)" };
-	static std::regex const	tag_re{ R"(^([#.]?[A-Za-z0-9_-]+))" };
-	static std::regex const	attr_re{ R"(^([A-Za-z0-9_-]+)(=['"][^'"]*['"])?[ ,]*)" };
-	static std::regex const	id_re{ R"(^#([A-Za-z0-9_-]+))" };
-	static std::regex const	class_re{ R"(^\.([A-Za-z0-9_-]+))" };
+	static std::regex const	tag_re{ R"(^([#.]?[A-Za-z_-][A-Za-z0-9_-]*))" };
+	static std::regex const	attr_re{ R"(^([A-Za-z_-][A-Za-z0-9_-]*)(=['"][^'"]*['"])?[ ,]*)" };
+	static std::regex const	id_re{ R"(^#([A-Za-z_-][A-Za-z0-9_-]*))" };
+	static std::regex const	class_re{ R"(^\.([A-Za-z_-][A-Za-z0-9_-]*))" };
 
 	static std::regex const	nest_re{ R"(^([\t]*)(.*)$)" };	///	@brief	This implementation supports only tabs as indent.
 	static std::regex const	comment_re{ R"(^//-[ \t]?(.*)$)" };
 	static std::regex const	empty_re{ R"(^[ \t]*$)" };
-	static std::regex const	case_re{ R"(^case[ \t]+([A-Za-z_][A-Za-z0-9_]*)$)" };
-	static std::regex const	when_re{ R"(^when[ \t]+(["'])([A-Za-z_][A-Za-z0-9_]*)(["'])$)" };
+	static std::regex const	case_re{ R"(^case[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)$)" };
+	static std::regex const	when_re{ R"(^when[ \t]+(["'])([A-Za-z_-][A-Za-z0-9_-]*)(["'])$)" };
 	static std::regex const	break_re{ R"(^-[ \t]+break$)" };
 	static std::regex const	if_re{ R"(^if[ \t]+(.*)$)" };
 	static std::regex const	elif_re{ R"(^else[v \t]+if[ \t]+(.*)$)" };
 	static std::regex const	else_re{ R"(^else[ \t]+(.*)$)" };
-	static std::regex const	each_re{ R"(^each[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*in[ \t]*\[([^\]]*)\]$)" };
-	static std::regex const	for_re{ R"(^-[ \t]+for[ \t]*\(var[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+);([ \tA-Za-z0-9_+*/%=<>!-]*);([ \tA-Za-z0-9_+*/%=<>!-]*)\)$)" };
-	static std::regex const	var_re{ R"(^-[ \t]+var[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+)$)" };
-	static std::regex const	const_re{ R"(^-[ \t]+const[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([^;]+)$)" };
+	static std::regex const	each_re{ R"(^each[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*in[ \t]*\[([^\]]*)\]$)" };
+	static std::regex const	for_re{ R"(^-[ \t]+for[ \t]*\(var[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+);([ \tA-Za-z0-9_+*/%=<>!-]*);([ \tA-Za-z0-9_+*/%=<>!-]*)\)$)" };
+	static std::regex const	var_re{ R"(^-[ \t]+var[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+)$)" };
+	static std::regex const	const_re{ R"(^-[ \t]+const[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+)$)" };
 	static std::regex const	include_re{ R"(^include[ \t]+([^ ]+)$)" };
 	static std::regex const	block_re{ R"(^block[ \t]+([^ ]+)$)" };
 	static std::regex const	extends_re{ R"(^extends[ \t]+([^ ]+)$)" };
+	// TODO: mixin
 }	// namespace def
 
 ///	@brief	Reads the file as string.
@@ -262,16 +266,16 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 	// Parses to tree of nested lines.
 	(void)std::accumulate(lines.begin(), lines.end(), root, [nest](auto&& previous, auto const& a) {
 		auto	parent	= previous->parent() ? previous->parent() : previous;
-		if (a.second.starts_with("| ")) {
+		if (a.second.starts_with(def::folding_sv)) {
 			if (parent == previous) {
 				throw ex::syntax_error();		// Folding line never be the top.
 			}
 			parent->set_folding(true);			// Parent is folding.
 		}
-		if (a.second.starts_with("//-")) {
+		if (a.second.starts_with(def::comment_sv)) {
 			line_t const	line{ previous->nest(), a.second };
 			previous	= parent->push_nest(line, parent);			// Comment is always in the current level.
-		} else if (a.second.starts_with("//")) {
+		} else if (a.second.starts_with(def::raw_comment_sv)) {
 			// There is nothing to do.								// Drops pug comment.
 		} else if (std::regex_match(a.second.cbegin(), a.second.cend(), def::empty_re)) {
 			// There is nothing to do.		
@@ -340,10 +344,9 @@ public:
 	// ------------------------------
 	// Variables.
 
-	///	@brief	Gets the variable.
-	///	@param[in]	tag		Name of the variable.
-	///	@return		Value of the variable.
-	auto const&		variable(std::string_view tag) const { return variables_.at(tag); }
+	///	@brief	Gets all the variables.
+	///	@return		All the variables in current context.
+	auto const&		variables() const noexcept{ return variables_; }
 	///	@brief	Has the variable or not.
 	///	@param[in]	tag		Name of the variable.
 	///	@return		It returns true if the variable exists; otherwise, it returns false.
@@ -361,6 +364,21 @@ private:
 	blocks_t		blocks_;		///< @brief	Blocks.
 	variables_t		variables_;		///< @brief	Variables.
 };
+
+///	@brief	Replaces all the variables (#{xxx}) in the @p str.
+///	@param[in]	context	Context including variables.
+///	@param[in]	str		Input string.
+///	@return	Replaced string.
+inline std::string	replace_variables(context_t const& context, std::string_view str) {
+	if (str.find(def::var_sv) == std::string_view::npos)	return std::string{ str };
+
+	// It is not effective.because this implementation will scan while of the string by variables-count times.
+	auto	s	= std::string{str};
+	std::ranges::for_each(context.variables(), [&s](auto const& a) {
+		s	= std::regex_replace(s, std::regex{ R"(#\{)" + std::string{a.first} + R"(\})" }, a.second);
+	});
+	return s;
+}
 
 std::tuple<std::string,context_t>	parse_line(context_t const&, std::shared_ptr<line_node_t const>, std::filesystem::path const&);
 
@@ -523,9 +541,9 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 	if ( ! line)		return { std::string{}, context };
 
 	if (auto const& s = line->line(); s.starts_with(def::folding_sv)) {
-		return { std::string{s.substr(2)}, context };
+		return { replace_variables(context, s.substr(2)), context};
 	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, def::comment_re)) {
-		auto const	out = line->tabs() + "<!-- " + std::string{ to_str(s, m, 1) } + " -->" + '\n';
+		auto const	out = line->tabs() + "<!-- " + replace_variables(context, to_str(s, m, 1)) + " -->" + '\n';
 		return { out, context };
 	} else if (svmatch m; std::regex_match(s.cbegin(), s.cend(), m, def::include_re)) {
 		// Opens an including pug file from relative path of the current pug.
@@ -674,8 +692,8 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::var_re) || std::regex_match(s.cbegin(), s.cend(), m, def::const_re)) {
 		auto const& name	= to_str(s, m, 1);
 		auto const& value	= to_str(s, m, 2);
-		context_t	ctx	= context;
-		ctx.set_variable(name, value);
+		context_t	ctx		= context;
+		ctx.set_variable(name, (value.starts_with('"') || value.starts_with("'")) ? value.substr(1, value.size() - 2) : value);
 		return { std::string{}, ctx };
 	} else {
 		std::ostringstream				oss;
@@ -685,7 +703,7 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 			if (auto const& tag = std::get<2>(result); ! tag.empty()) {
 				tags.push(tag);
 			}
-			oss	<< std::get<1>(result);
+			oss	<< replace_variables(context, std::get<1>(result));
 		}
 
 		auto const[ss,ctx]	= parse_children(context, line->children(), path);
