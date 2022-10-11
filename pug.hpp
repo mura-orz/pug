@@ -376,7 +376,6 @@ std::tuple<std::string,context_t>	parse_line(context_t const&, std::shared_ptr<l
 ///		-#	Remaingin string of the line.
 ///		-#	Output stream.
 ///		-#	Tag name to close later.
-///	@todo	The '=' directive.
 ///	@warning	Keep original string available because it returns view of the string.
 inline std::tuple<std::string_view, std::string, std::string_view>
 		parse_element(std::string_view s, std::shared_ptr<line_node_t const> line) {
@@ -519,11 +518,6 @@ inline	std::tuple<std::string, context_t>	parse_children(context_t context, std:
 /// @return		It returns the following:
 ///		-#	Generated HTLM string
 ///		-#	Context.
-///	@todo	The 'var' directive.
-///	@todo	The 'for' directive.
-///	@todo	The 'each' directive.
-///	@todo	The 'switch' directive.
-///	@todo	The 'if'-'else' directives.
 ///	@todo	The 'mixin' directive.
 inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, std::shared_ptr<line_node_t const> line, std::filesystem::path const& path) {
 	if ( ! line)		return { std::string{}, context };
