@@ -54,6 +54,8 @@ public:
 namespace impl {
 namespace def {
 	static std::set<std::string_view> const	void_tags{ "br", "hr", "img", "meta", "input", "link", "area", "base", "col", "embed", "param", "source", "track", "wbr" };
+	static std::unordered_map<char, std::string> const	escapes{ { '<', "&lt;" }, { '>', "&gt;" }, { '&', "&amp;" }, { '"', "&quot;" }, { '\'',"&#39;" } };
+
 	static std::string_view const	raw_html_sv{ "." };
 	static std::string_view const	folding_sv{ "| " };
 	static std::string_view const	default_sv{ "default" };
@@ -410,11 +412,17 @@ inline std::tuple<std::string_view, std::string, std::string_view>
 			os	<< tag;
 			s	= s.substr(tag.length());
 		}
+		bool	escape = false;
 		if (s.empty() || s.starts_with(": ")) {
 			s	= s.empty() ? std::string_view{} : s.substr(2);
 			os	<< (void_tag ? " />" : ">");
 			os	<< (is_folding(line) ? "" : "\n");
 			return {s, os.str(), void_tag ? std::string_view{} : tag};
+		} else if (s.starts_with("!=")) {
+			s	= s.substr(2);
+		} else if (s.starts_with('=')) {
+			bool	escape = true;
+			s	= s.substr(1);
 		}
 
 		// ID
@@ -456,8 +464,14 @@ inline std::tuple<std::string_view, std::string, std::string_view>
 		if (s.starts_with(": ")) {
 			return {s.substr(2), os.str(), void_tag ? std::string_view{} : tag};
 		} else {
-			bool const	escaped = s.starts_with('=');
-			os	<< (s.starts_with(' ') ? s.substr(1) : s);
+			auto const	c	= s.starts_with(' ') ? s.substr(1) : s;
+			if (escape) {
+				auto const 	escaped	= c | std::views::transform([](auto const& a) {
+					return def::escapes.contains(a) ? def::escapes.at(a) : std::string(1u, a); });
+				std::ranges::for_each(escaped, [&os](auto const& a) { os << a; });
+			} else {
+				os	<< c;
+			}
 			if ( ! is_folding(line)) {
 				os	<< '\n';
 			}
