@@ -44,9 +44,11 @@ public:
 class io_error : public std::ios_base::failure {
 public:
 	///	@brief	Constructor.
+	///	@param[in]	code	Error code.
 	explicit	io_error(std::error_code const& code) : std::ios_base::failure("io_error", code) {}
 	///	@brief	Constructor.
 	///	@param[in]	path	Path of the file.
+	///	@param[in]	code	Error code.
 	explicit	io_error(std::filesystem::path const& path, std::error_code const& code) : std::ios_base::failure(path.string(), code) {}
 };
 
@@ -520,7 +522,7 @@ inline	std::tuple<std::string, context_t>	parse_children(context_t context, std:
 ///		-	This implementation supports only tabs as indent.
 ///		-	This implementation supports only the following order of emenet:
 ///				-	tag#id.class.class(attr,attr)
-///		-	This implementation supports only single line element:
+///		-	This implementation supports only single line element.
 ///		-	This implementation does not support inline 'style'.
 ///		-	This implementation supports the 'extends' as forward reference only.
 ///				The implementation does not support default of the 'extends'.
@@ -690,8 +692,8 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 				return std::move(os);
 			}).str(), std::get<1>(outs.back()) };
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::var_re) || std::regex_match(s.cbegin(), s.cend(), m, def::const_re)) {
-		auto const& name	= to_str(s, m, 1);
-		auto const& value	= to_str(s, m, 2);
+		auto const&	name	= to_str(s, m, 1);
+		auto const&	value	= to_str(s, m, 2);
 		context_t	ctx		= context;
 		ctx.set_variable(name, (value.starts_with('"') || value.starts_with("'")) ? value.substr(1, value.size() - 2) : value);
 		return { std::string{}, ctx };
@@ -735,7 +737,7 @@ inline std::string		pug_string(std::string_view pug, std::filesystem::path const
 	auto const	root = impl::parse_file(pug);
 
 	// TODO:	impl::dump_lines(std::clog, root);
-	auto const [out, ctx] = impl::parse_line(impl::context_t{}, root, path);	// TODO:
+	auto const [out, ctx]	= impl::parse_line(impl::context_t{}, root, path);	// TODO:
 	return out;
 }
 
