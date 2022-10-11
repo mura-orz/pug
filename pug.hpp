@@ -524,7 +524,6 @@ inline	std::tuple<std::string, context_t>	parse_children(context_t context, std:
 /// @return		It returns the following:
 ///		-#	Generated HTLM string
 ///		-#	Context.
-///	@todo	The 'mixin' directive.
 inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, std::shared_ptr<line_node_t const> line, std::filesystem::path const& path) {
 	if ( ! line)		return { std::string{}, context };
 
