@@ -518,20 +518,6 @@ inline	std::tuple<std::string, context_t>	parse_children(context_t context, std:
 }
 
 ///	@brief	Parses a line of pug.
-///		The following limitations will cause syntax error.
-///		-	This implementation supports only tabs as indent.
-///		-	This implementation supports only the following order of emenet:
-///				-	tag#id.class.class(attr,attr)
-///		-	This implementation supports only single line element.
-///		-	This implementation does not support inline 'style'.
-///		-	This implementation supports the 'extends' as forward reference only.
-///				The implementation does not support default of the 'extends'.
-///		-	This implementation supports boolean attribute as only true.
-///			The following expressions are not supported:
-///				-	attr=true
-///				-	attr=false
-///		-	This implementation supports only either the '#id' style or the '(id='..')' style in an element.
-///		-	This implementation supports only either the '.class' style or the '(class='..')' style in an element.
 ///	@param[in]	context	Parsing context.
 ///	@param[in]	line	Line of the pug.
 ///	@param[in]	path	Path of the pug.
