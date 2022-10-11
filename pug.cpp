@@ -1,5 +1,5 @@
 ﻿///	@file
-///	@brief		pug++  - Pug-THML translator
+///	@brief		pug++  - Pug-HTML translator
 ///	@author		Mura
 ///	@copyright	(c) 2022-, Mura.
 
