@@ -250,8 +250,10 @@ inline std::shared_ptr<line_node_t>	pop_nest(std::shared_ptr<line_node_t> node, 
 ///	@param[in]	nest	Current nested level.
 inline void dump_lines(std::ostream& os, std::shared_ptr<line_node_t const> node, size_t nest=0u) {
 	if (!node)	return;
-
-	os << std::string(nest, '\t') << node->line() << ":" << node->nest();
+	std::size_t const	limit	= 16;
+	auto const			s		= node->line();
+	std::string const	line	= limit < s.size() ? std::string{ s.substr(0, limit) } + " ... " + std::string{ s.substr(s.size() - limit) } : std::string{ s };
+	os << std::string(nest, '\t') << line << ":" << node->nest();
 	if (auto const& ch = node->children(); ! ch.empty()) {
 		os << "{" << std::endl;
 		std::for_each(ch.cbegin(), ch.cend(), [&os, nest](auto const& a) { dump_lines(os, a, nest + 1); });
