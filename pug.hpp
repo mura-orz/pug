@@ -88,7 +88,7 @@ namespace def {
 	static std::regex const	elif_re{ R"(^else[ \t]+if[ \t]+(.*)$)" };
 	static std::regex const	else_re{ R"(^else[ \t]*$)" };
 	static std::regex const	each_re{ R"(^each[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*in[ \t]*\[([^\]]*)\]$)" };
-	static std::regex const	for_re{ R"(^-[ \t]+for[ \t]*\(var[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+);([ \tA-Za-z0-9_+*/%=<>!-]*);([ \tA-Za-z0-9_+*/%=<>!-]*)\)$)" };
+	static std::regex const	for_re{ R"(^-[ \t]+for[ \t]*\([ \t]*var[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+);[ \t]*([ \tA-Za-z0-9_+*/%=<>!-]*);[ \t]*([ \tA-Za-z0-9_+*/%=<>!-]*)\)$)" };
 	static std::regex const	var_re{ R"(^-[ \t]+var[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+)$)" };
 	static std::regex const	const_re{ R"(^-[ \t]+const[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+)$)" };
 	static std::regex const	include_re{ R"(^include[ \t]+([^ ]+)$)" };
@@ -586,7 +586,7 @@ inline context_t	assign(context_t context, std::string_view variable, std::strin
 		throw ex::syntax_error();
 	} else if (op == "=") {
 		context.set_variable(variable, std::visit(eval::operand_to_str{}, value));
-	} else if (eval::operand_t v = context.variable(variable); std::holds_alternative<std::string_view>(v)) {
+	} else if (eval::operand_t v = to_operand(context, variable); std::holds_alternative<std::string_view>(v)) {
 		if (auto const var = std::get<std::string_view>(v); op == "+=") {
 			context.set_variable(variable, std::string{ var } + std::visit(eval::operand_to_str{}, value));
 		} else	throw ex::syntax_error();
@@ -643,6 +643,10 @@ inline bool		compare(operand_t const& lhs, std::string_view op, operand_t const&
 			auto const	rv	= std::get<long long>(rhs);
 			if (op == "==" || op == "===")			return lv == rv;
 			else if (op == "!=" || op == "!==")		return lv != rv;
+			else if (op == "<")						return lv < rv;
+			else if (op == "<=")					return lv <= rv;
+			else if (op == ">")						return lv > rv;
+			else if (op == ">=")					return lv >= rv;
 		} else if (std::holds_alternative<bool>(rhs)) {
 			auto const	rv	= std::get<bool>(rhs);
 			if (op == "==" || op == "===")			return (lv != 0) == rv;
@@ -674,7 +678,7 @@ inline std::tuple<bool,context_t>	evaluate(context_t const& context, std::string
 			eval::operand_t	const	lhs	= eval::to_operand(context, to_str(expression, m, 1));
 			return { eval::compare(lhs, op, rhs), context };
 		} else if (def::assign_ops.contains(op)) {
-			return { true, eval::assign(context, to_str(expression, m, 3), op, rhs) };
+			return { true, eval::assign(context, to_str(expression, m, 1), op, rhs) };
 		}
 	}
 	// TODO: Currently, it supports simple binary comparison operators only.
@@ -818,7 +822,7 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 			while (std::get<0>(evaluate(ctx, condition))) {	// TODO: It supports simple binary comparison only.
 				auto	r	= parse_children(ctx, line->children(), path);
 				auto[ss, c]	= evaluate(std::get<1>(r), advance);	// TODO:
-				oss	<< ss;
+				oss	<< std::get<0>(r);
 				ctx	= c;
 			}
 		}
