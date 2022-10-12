@@ -746,7 +746,7 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 		}
 		for (auto const& elif : elifs) {
 			if (std::get<0>(evaluate(context, elif.first))) {
-				return parse_children(context, line->children(), path);
+				return parse_children(context, elif.second->children(), path);
 			}
 		}
 		if (else_) {
@@ -891,7 +891,6 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 ///	@return		String of generated HTML.
 inline std::string		pug_string(std::string_view pug, std::filesystem::path const& path = "./") {
 	auto const	root		= impl::parse_file(pug);
-	impl::dump_lines(std::clog, root);	// TODO:
 	auto const[out, ctx]	= impl::parse_line(impl::context_t{}, root, path);
 	return out;
 }
