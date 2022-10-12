@@ -57,7 +57,8 @@ public:
 namespace impl {
 namespace def {
 	static std::set<std::string_view> const	void_tags{ "br", "hr", "img", "meta", "input", "link", "area", "base", "col", "embed", "param", "source", "track", "wbr" };
-	static std::set<std::string_view> const	binary_ops{ "==", "===", "!=", "!==", "<", "<=", ">", ">=" };
+	static std::set<std::string_view> const	compare_ops{ "==", "===", "!=", "!==", "<", "<=", ">", ">=" };
+	static std::set<std::string_view> const	assign_ops{ "=", "+=", "-=", "*=", "/=", "%=", };
 	static std::unordered_map<char, std::string> const	escapes{ { '<', "&lt;" }, { '>', "&gt;" }, { '&', "&amp;" }, { '"', "&quot;" }, { '\'',"&#39;" } };
 
 	static std::string_view const	raw_html_sv{ "." };
@@ -84,8 +85,8 @@ namespace def {
 	static std::regex const	when_re{ R"(^when[ \t]+(["'])([A-Za-z_-][A-Za-z0-9_-]*)(["'])$)" };
 	static std::regex const	break_re{ R"(^-[ \t]+break$)" };
 	static std::regex const	if_re{ R"(^if[ \t]+(.*)$)" };
-	static std::regex const	elif_re{ R"(^else[v \t]+if[ \t]+(.*)$)" };
-	static std::regex const	else_re{ R"(^else[ \t]+(.*)$)" };
+	static std::regex const	elif_re{ R"(^else[ \t]+if[ \t]+(.*)$)" };
+	static std::regex const	else_re{ R"(^else[ \t]*$)" };
 	static std::regex const	each_re{ R"(^each[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*in[ \t]*\[([^\]]*)\]$)" };
 	static std::regex const	for_re{ R"(^-[ \t]+for[ \t]*\(var[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+);([ \tA-Za-z0-9_+*/%=<>!-]*);([ \tA-Za-z0-9_+*/%=<>!-]*)\)$)" };
 	static std::regex const	var_re{ R"(^-[ \t]+var[ \t]+([A-Za-z_-][A-Za-z0-9_-]*)[ \t]*=[ \t]*([^;]+)$)" };
@@ -357,6 +358,10 @@ public:
 	///	@brief	Gets all the variables.
 	///	@return		All the variables in current context.
 	auto const&		variables() const noexcept{ return variables_; }
+	///	@brief	Gets the variable.
+	///	@param[in]	tag		Name of the variable.
+	///	@return		The variable.
+	auto const&		variable(std::string_view tag) const noexcept { return variables_.at(tag); }
 	///	@brief	Has the variable or not.
 	///	@param[in]	tag		Name of the variable.
 	///	@return		It returns true if the variable exists; otherwise, it returns false.
@@ -530,7 +535,15 @@ namespace eval {
 ///	@brief	Operand value.
 using operand_t	= std::variant<long long, bool, std::string_view>;
 
-///	@brief	Gets am operand value.
+///	@brief	Operand value to string.
+struct operand_to_str {
+	std::string	operator() (long long v) const			{ return std::to_string(v); }
+	std::string	operator() (bool v) const				{ return v ? "true" : "false"; }
+	std::string	operator() (std::string_view v) const	{ return std::string{ v }; }
+
+};
+
+///	@brief	Gets an operand value.
 ///		- If the @p str is boolean, it returns true or false.
 ///		- If the @p str is integer, it returns its value of long long integer.
 ///		- If the @p str is string, it returns a view of its string.
@@ -539,8 +552,8 @@ using operand_t	= std::variant<long long, bool, std::string_view>;
 ///	@param[in]	str		String.
 ///	@return		Operand value.
 inline operand_t	to_operand(context_t const& context, std::string_view str) {
-	auto const	variable = context.variables().contains(str);
-	auto const	operand	= variable ? context.variables().at(str) : str;
+	auto const	variable = context.has_variable(str);
+	auto const	operand	= variable ? context.variable(str) : str;
 
 	if (operand == "true")			return true;
 	else if (operand == "false")	return false;
@@ -550,90 +563,118 @@ inline operand_t	to_operand(context_t const& context, std::string_view str) {
 		iss >> i;
 		return i;
 	} else if (std::regex_match(operand.cbegin(), operand.cend(), mm, def::string_re)) {
-		if (to_str(operand, mm, 0) != to_str(operand, mm, 2))	throw ex::syntax_error();
-		return to_str(operand, mm, 1);
+		if (to_str(operand, mm, 1) != to_str(operand, mm, 3))	throw ex::syntax_error();
+		return to_str(operand, mm, 2);
 	} else if (variable) {
 		return operand;
 	}
 	throw ex::syntax_error();
 };
 
-};
+///	@brief	Assigns value to variable.
+/// @param[in]	context		Context.
+/// @param[in]	variable	Variable name.
+/// @param[in]	op			Assign operator.
+/// @param[in]	value		Value to set.
+///	@return		It returns evaluation result of the @p condition.
+inline context_t	assign(context_t context, std::string_view variable, std::string_view op, operand_t const& value) {
+	if ( ! def::assign_ops.contains(op)) {
+		// TODO: Currently, it supports simple assign operators only.
+		throw ex::syntax_error();
+	}
+	if ( ! context.has_variable(variable) && op != "=") {
+		throw ex::syntax_error();
+	} else if (op == "=") {
+		context.set_variable(variable, std::visit(eval::operand_to_str{}, value));
+	} else if (eval::operand_t v = context.variable(variable); std::holds_alternative<std::string_view>(v)) {
+		if (auto const var = std::get<std::string_view>(v); op == "+=") {
+			context.set_variable(variable, std::string{ var } + std::visit(eval::operand_to_str{}, value));
+		} else	throw ex::syntax_error();
+	} else if (std::holds_alternative<long long>(v)) {
+		if (auto const var = std::get<long long>(v); std::holds_alternative<std::string_view>(value) && op == "+=") {
+			context.set_variable(variable, std::to_string(var) + std::string{ std::get<std::string_view>(value) });
+		} else if (std::holds_alternative<long long>(value)) {
+			if (auto const val = std::get<long long>(value); op == "+=") {
+				context.set_variable(variable, std::to_string(var + val));
+			} else if (op == "-=") {
+				context.set_variable(variable, std::to_string(var - val));
+			} else if (op == "*=") {
+				context.set_variable(variable, std::to_string(var * val));
+			} else if (op == "/=") {
+				if (val == 0)	throw ex::syntax_error();
+				context.set_variable(variable, std::to_string(var / val));
+			} else if (op == "%=") {
+				if (val == 0)	throw ex::syntax_error();
+				context.set_variable(variable, std::to_string(var % val));
+			} else	throw ex::syntax_error();
+		} else	throw ex::syntax_error();
+	}
+	return context;
+}
+
+///	@brief	Compares two operands.
+/// @param[in]	lhs		Left-hand-side operand.
+/// @param[in]	op		Binary comparison operator.
+/// @param[in]	rhs		Right-hand-side operand.
+///	@return		It returns evaluation result of the @p condition.
+inline bool		compare(operand_t const& lhs, std::string_view op, operand_t const& rhs) {
+	if ( ! def::compare_ops.contains(op)) {
+		// TODO: Currently, it supports simple binary comparison operators only.
+		throw ex::syntax_error();
+	}
+	if (std::holds_alternative<bool>(lhs)) {
+		auto const	lv	= std::get<bool>(lhs);
+		if (std::holds_alternative<bool>(rhs)) {
+			auto const	rv	= std::get<bool>(rhs);
+			if (op == "==" || op == "===")			return lv == rv;
+			else if (op == "!=" || op == "!==")		return lv != rv;
+		} else if (std::holds_alternative<long long>(rhs)) {
+			auto const	rv	= std::get<long long>(rhs);
+			if (op == "==" || op == "===")			return lv == (rv != 0);
+			else if (op == "!=" || op == "!==")		return lv != (rv != 0);
+		} else if (std::holds_alternative<std::string_view>(rhs)) {
+			auto const	rv	= std::get<std::string_view>(rhs);
+			if (op == "==" || op == "===")			return lv != rv.empty();
+			else if (op == "!=" || op == "!==") 	return lv == rv.empty();
+		}
+	} else if (std::holds_alternative<long long>(lhs)) {
+		auto const	lv	= std::get<long long>(lhs);
+		if (std::holds_alternative<long long>(rhs)) {
+			auto const	rv	= std::get<long long>(rhs);
+			if (op == "==" || op == "===")			return lv == rv;
+			else if (op == "!=" || op == "!==")		return lv != rv;
+		} else if (std::holds_alternative<bool>(rhs)) {
+			auto const	rv	= std::get<bool>(rhs);
+			if (op == "==" || op == "===")			return (lv != 0) == rv;
+			else if (op == "!=" || op == "!==")		return (lv != 0) != rv;
+		} else if (std::holds_alternative<std::string_view>(rhs)) {
+			auto const	rv	= std::get<std::string_view>(rhs);
+			if (op == "==" || op == "===")			return std::to_string(lv) == rv;
+			else if (op == "!=" || op == "!==")		return std::to_string(lv) != rv;
+		}
+	} else if (std::holds_alternative<std::string_view>(lhs)) {
+		auto const	lv	= std::get<std::string_view>(lhs);
+		auto const	rv = std::visit(operand_to_str{}, rhs);
+		if (op == "==" || op == "===")			return lv == rv;
+		else if (op == "!=" || op == "!==") 	return lv != rv;
+	}
+	throw ex::syntax_error();
+}
+
+}	// namespace eval
 
 ///	@brief	Evaluates the @p condition.
 ///	@param[in]	context		Context.
-///	@param[in]	condition	Condition.
-///	@return		It returns evaluation result of the @p condition.
-inline bool	evaluate(context_t const& context, std::string_view condition) {
-	if (svmatch m; std::regex_match(condition.cbegin(), condition.cend(), m, def::binary_op_re)) {
-		auto const&	op	= to_str(condition, m, 1);
-		if ( ! def::binary_ops.contains(op)) {
-			// TODO: Currently, it supports simple binary comparison operators only.
-			throw ex::syntax_error();
-		}
-		eval::operand_t	const	lhs	= eval::to_operand(context, to_str(condition, m, 0));
-		eval::operand_t	const	rhs = eval::to_operand(context, to_str(condition, m, 2));
-
-		if (std::holds_alternative<std::string_view>(lhs) && std::holds_alternative<std::string_view>(rhs)) {
-			auto const	lv	= std::get<std::string_view>(lhs);
-			auto const	rv	= std::get<std::string_view>(rhs);
-			if (op == "==" || op == "===") 		return lv == rv;
-			else if (op == "!=" || op == "!==") return lv != rv;
-			else if (op == "<")					return lv < rv;
-			else if (op == "<=")				return lv <= rv;
-			else if (op == ">")					return lv > rv;
-			else if (op == ">=")				return lv >= rv;
-		} else if (std::holds_alternative<bool>(lhs) && std::holds_alternative<bool>(rhs)) {
-			auto const	lv	= std::get<bool>(lhs);
-			auto const	rv	= std::get<bool>(rhs);
-			if (op == "==" || op == "===") 		return lv == rv;
-			else if (op == "!=" || op == "!==") return lv != rv;
-		} else if (std::holds_alternative<long long>(lhs) && std::holds_alternative<long long>(rhs)) {
-			auto const	lv	= std::get<long long>(lhs);
-			auto const	rv	= std::get<long long>(rhs);
-			if (op == "==" || op == "===") 		return lv == rv;
-			else if (op == "!=" || op == "!==") return lv != rv;
-			else if (op == "<")					return lv < rv;
-			else if (op == "<=")				return lv <= rv;
-			else if (op == ">")					return lv > rv;
-			else if (op == ">=")				return lv >= rv;
-		} else if (std::holds_alternative<bool>(lhs) || std::holds_alternative<bool>(rhs)) {
-			auto const	boolean	= std::get<bool>(std::holds_alternative<bool>(lhs) ? lhs : rhs);
-			auto const	peer	= std::holds_alternative<bool>(lhs) ? rhs : lhs;
-			if (std::holds_alternative<long long>(peer)) {
-				auto const	pv	= std::get<long long>(peer);
-				if (op == "==" || op == "===")			return (pv != 0) == boolean;
-				else if (op == "!=" || op == "!==")		return (pv != 0) != boolean;
-			} else if (std::holds_alternative<std::string_view>(peer)) {
-				auto const	pv	= std::get<std::string_view>(peer);
-				if (op == "==" || op == "===")			return pv.empty() != boolean;
-				else if (op == "!=" || op == "!==") 	return pv.empty() == boolean;
-			}
-		} else if (std::holds_alternative<long long>(lhs) || std::holds_alternative<long long>(rhs)) {
-			auto const	integer	= std::get<long long>(std::holds_alternative<long long>(lhs) ? lhs : rhs);
-			auto const	peer	= std::holds_alternative<long long>(lhs) ? rhs : lhs;
-			if (std::holds_alternative<bool>(peer)) {
-				auto const	pv	= std::get<bool>(peer);
-				if (op == "==" || op == "===")			return pv == (integer != 0LL);
-				else if (op == "!=" || op == "!==")		return pv != (integer != 0LL);
-			} else if (std::holds_alternative<std::string_view>(peer)) {
-				auto const	pv	= std::get<std::string_view>(peer);
-				if (op == "==" || op == "===")			return pv == std::to_string(integer);
-				else if (op == "!=" || op == "!==")		return pv != std::to_string(integer);
-			}
-		} else if (std::holds_alternative<std::string_view>(lhs) || std::holds_alternative<std::string_view>(rhs)) {
-			auto const	string	= std::get<std::string_view>(std::holds_alternative<std::string_view>(lhs) ? lhs : rhs);
-			auto const	peer	= std::holds_alternative<std::string_view>(lhs) ? rhs : lhs;
-			if (std::holds_alternative<bool>(peer)) {
-				auto const	pv	= std::get<bool>(peer);
-				if (op == "==" || op == "===")			return string.empty() != pv;
-				else if (op == "!=" || op == "!==") 	return string.empty() == pv;
-			}
-			else if (std::holds_alternative <long long>(peer)) {
-				auto const	pv	= std::get<long long>(peer);
-				if (op == "==" || op == "===")			return string == std::to_string(pv);
-				else if (op == "!=" || op == "!==")		return string != std::to_string(pv);
-			}
+///	@param[in]	expression	Condition.
+inline std::tuple<bool,context_t>	evaluate(context_t const& context, std::string_view expression) {
+	if (svmatch m; std::regex_match(expression.cbegin(), expression.cend(), m, def::binary_op_re)) {
+		auto const&	op	= to_str(expression, m, 2);
+		eval::operand_t	const	rhs = eval::to_operand(context, to_str(expression, m, 3));
+		if (def::compare_ops.contains(op)) {
+			eval::operand_t	const	lhs	= eval::to_operand(context, to_str(expression, m, 1));
+			return { eval::compare(lhs, op, rhs), context };
+		} else if (def::assign_ops.contains(op)) {
+			return { true, eval::assign(context, to_str(expression, m, 3), op, rhs) };
 		}
 	}
 	// TODO: Currently, it supports simple binary comparison operators only.
@@ -678,7 +719,7 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 		}
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::if_re)) {
 		// If statement
-		if (auto const& condition = to_str(s, m, 1); evaluate(context, condition)) {
+		if (auto const& condition = to_str(s, m, 1); std::get<0>(evaluate(context, condition))) {
 			// Ignores following elses.
 			return parse_children(context, line->children(), path);
 		}
@@ -689,8 +730,8 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 		{
 			auto const	parent	= line->parent();
 			if ( ! parent)		throw ex::syntax_error();
-			auto const&		children	= line->children();
-			for (auto itr = std::ranges::find(children, line), end = std::ranges::cend(children); itr != end; ++itr) {
+			auto const&		children	= parent->children();
+			for (auto itr = ++std::ranges::find(children, line), end = std::ranges::cend(children); itr != end; ++itr) {
 				auto const&		line	= (*itr)->line();
 				if (svmatch m; std::regex_match(line.cbegin(), line.cend(), m, def::elif_re)) {
 					if (else_)	throw ex::syntax_error();		// The 'else' appears at only the end of the sequence.
@@ -704,7 +745,7 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 			}
 		}
 		for (auto const& elif : elifs) {
-			if (evaluate(context, elif.first)) {
+			if (std::get<0>(evaluate(context, elif.first))) {
 				return parse_children(context, line->children(), path);
 			}
 		}
@@ -720,9 +761,10 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 		// There is nothing to do because it is handled at if directive. 
 		return { std::string{}, context };
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::case_re)) {
-		auto const	var			= to_str(s, m, 0);
+		auto const	ss			= to_str(s, m, 1);
+		auto const	var			= context.has_variable(ss) ? context.variable(ss) : ss;
 		// TODO:
-		using	cases_t = std::vector<std::pair<std::string_view, std::shared_ptr<line_node_t const>>>;;
+		using	cases_t = std::vector<std::pair<std::string_view, std::shared_ptr<line_node_t const>>>;
 		auto const	contains = [](cases_t const& cases, std::string_view tag) {
 			return std::ranges::find_if(cases, [tag](auto const& a) { return a.first == tag; }) != std::ranges::cend(cases);
 		};
@@ -732,10 +774,10 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 					if (contains(out, std::string_view{}))		throw ex::syntax_error();
 					out.push_back({std::string_view{}, a});
 				} else if (svmatch mm; std::regex_match(ss.cbegin(), ss.cend(), mm, def::when_re)) {
-					if (to_str(ss, mm, 0) != to_str(ss, mm, 2)) {
+					if (to_str(ss, mm, 1) != to_str(ss, mm, 3)) {
 						throw ex::syntax_error();
 					}
-					auto const	label	= to_str(a->line(), mm, 1);
+					auto const	label	= to_str(a->line(), mm, 2);
 					if (contains(out, label))		throw ex::syntax_error();
 					out.push_back({ label, a });
 				} else {
@@ -763,12 +805,24 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 			return { std::string{}, context };
 		}
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::for_re)) {
-		auto const	var			= to_str(s, m, 0);
-		auto const	initial		= to_str(s, m, 1);
-		auto const	condition	= to_str(s, m, 2);
-		auto const	advance		= to_str(s, m, 3);
-		// TODO:
-		return parse_children(context, line->children(), path);
+		auto const	var			= to_str(s, m, 1);
+		auto const	initial		= to_str(s, m, 2);
+		auto const	condition	= to_str(s, m, 3);
+		auto const	advance		= to_str(s, m, 4);
+
+		std::ostringstream	oss;
+		{
+			context_t	ctx		= context;
+			eval::operand_t		v	= eval::to_operand(ctx, initial);	// TODO: It supports a single literal only.
+			ctx.set_variable(var, std::visit(eval::operand_to_str{}, v));
+			while (std::get<0>(evaluate(ctx, condition))) {	// TODO: It supports simple binary comparison only.
+				auto	r	= parse_children(ctx, line->children(), path);
+				auto[ss, c]	= evaluate(std::get<1>(r), advance);	// TODO:
+				oss	<< ss;
+				ctx	= c;
+			}
+		}
+		return { oss.str(), context };	// Drops ctx.
 	} else if (std::regex_match(s.cbegin(), s.cend(), m, def::each_re)) {
 		// TODO:
 		auto const&	name	= to_str(s, m, 1);
@@ -837,6 +891,7 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 ///	@return		String of generated HTML.
 inline std::string		pug_string(std::string_view pug, std::filesystem::path const& path = "./") {
 	auto const	root		= impl::parse_file(pug);
+	impl::dump_lines(std::clog, root);	// TODO:
 	auto const[out, ctx]	= impl::parse_line(impl::context_t{}, root, path);
 	return out;
 }
