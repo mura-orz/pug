@@ -836,7 +836,14 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 			auto const	begin	= item.find_first_not_of(" \t");
 			if (begin == std::string::npos)	throw ex::syntax_error();
 			auto const	end		= item.find_last_not_of(" \t,");
-			items.emplace_back(item.substr(begin, end - begin));
+			auto const	i		= item.substr(begin, end - begin + 1);
+			if (i.starts_with('"') || i.starts_with("'")) {
+				if (i.size() < 2)			throw ex::syntax_error();
+				if (i.front() != i.back())	throw ex::syntax_error();
+				items.emplace_back(i.substr(1, i.size() - 2));
+			} else {
+				items.emplace_back(i);
+			}
 		}
 
 		if (items.empty()) {
