@@ -38,5 +38,5 @@ Translate a Pug file to HTML.
 
 ```
 std::filesystem::path const     path{ "..." };
-std::string const               html{ pug_file(path) };
+std::string const               html{ xxx::pug::pug_file(path) };
 ```
