@@ -406,7 +406,7 @@ std::tuple<std::string,context_t>	parse_line(context_t const&, std::shared_ptr<l
 ///	@param[in]	line	Line of the pug.
 ///	@param[in]	context	Parsing context.
 ///	@return		It returns the followings:
-///		-#	Remaingin string of the line.
+///		-#	Remaining string of the line.
 ///		-#	Output stream.
 ///		-#	Tag name to close later.
 ///	@warning	Keep original string available because it returns view of the string.
@@ -670,6 +670,9 @@ inline bool		compare(operand_t const& lhs, std::string_view op, operand_t const&
 ///	@brief	Evaluates the @p condition.
 ///	@param[in]	context		Context.
 ///	@param[in]	expression	Condition.
+///	@return		It returns the followings:
+///		-#	Result of the evaluation.
+///		-#	Ccontext.
 inline std::tuple<bool,context_t>	evaluate(context_t const& context, std::string_view expression) {
 	if (svmatch m; std::regex_match(expression.cbegin(), expression.cend(), m, def::binary_op_re)) {
 		auto const&	op	= to_str(expression, m, 2);
