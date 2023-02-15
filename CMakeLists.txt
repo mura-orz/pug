@@ -1,15 +1,22 @@
-﻿# CMakeList.txt : CMake project for pug, include source and define
-# project specific logic here.
-#
+﻿# It is just minimal.
 cmake_minimum_required (VERSION 3.8)
+enable_language(CXX)
 
-project ("pug")
+project (pug)
 
-# Add source to this project's executable.
-add_executable ("pug" "pug.cpp" "pug.hpp")
+# C++20 is required.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET "pug" PROPERTY CXX_STANDARD 20)
+# CUI utility
+add_executable	(pug	pug.hpp pug.cpp)
+
+# Unit test with googletest.
+# googletest:
+#	Ex)  $ apt install libgtest-dev
+find_package (GTest)
+if (GTest_FOUND)
+	add_executable		(pug-ut.exe		pug.hpp ut.cpp)
+	add_custom_command	(TARGET pug-ut.exe		POST_BUILD	COMMAND ./pug-ut.exe)
 endif()
-
-# TODO: Add tests and install targets if needed.
