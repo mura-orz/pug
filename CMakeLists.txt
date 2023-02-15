@@ -16,6 +16,9 @@ add_executable	(pug	pug.hpp pug.cpp)
 #	Ex)  $ apt install libgtest-dev
 find_package (GTest)
 if (GTest_FOUND)
-	add_executable		(pug-ut.exe		pug.hpp ut.cpp)
-	add_custom_command	(TARGET pug-ut.exe		POST_BUILD	COMMAND ./pug-ut.exe)
+	enable_testing()
+
+	add_executable			(pug-ut.exe		pug.hpp ut.cpp)
+	target_link_libraries	(pug-ut.exe		${GTEST_BOTH_LIBRARIES})
+	add_test				(unittest		pug-ut.exe)
 endif()
