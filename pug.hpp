@@ -69,7 +69,7 @@ namespace def {
 	static std::string_view const	default_sv{ "default" };
 
 	static std::regex const	binary_op_re{ R"(^([^ \t]+)[ \t]+([^ \t]+)[ \t]+([^ \t]+)$)"};
-	static std::regex const	string_re{ R"(^(['"])([^'"])(['"])$)" };	// TODO: escape sequence is unsupported.
+	static std::regex const	string_re{ R"(^(['"])([^'"]*)(['"])$)" };	// TODO: escape sequence is unsupported.
 	static std::regex const	integer_re{ R"(^(-?[0-9]+)$)" };
 
 	static std::regex const	doctype_re{ R"(^[dD][oO][cC][tT][yY][pP][eE] ([A-Za-z0-9_]+)$)" };
