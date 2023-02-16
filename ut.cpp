@@ -126,11 +126,199 @@ TEST(def_default_sv, String) {
 	EXPECT_EQ("default", xxx::pug::impl::def::default_sv);
 }
 
-#if 0
-	static std::regex const	binary_op_re{ R"(^([^ \t]+)[ \t]+([^ \t]+)[ \t]+([^ \t]+)$)"};
-	static std::regex const	string_re{ R"(^(['"])([^'"])(['"])$)" };	// TODO: escape sequence is unsupported.
-	static std::regex const	integer_re{ R"(^(-?[0-9]+)$)" };
+TEST(def_binary_op_re, Regex) {
+	// R"(^([^ \t]+)[ \t]+([^ \t]+)[ \t]+([^ \t]+)$)"};
+	{
+		std::string const	s{R"(ab + cd)"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("ab"s, m.str(1));
+		EXPECT_EQ("+"s, m.str(2));
+		EXPECT_EQ("cd"s, m.str(3));
+	}
+	{
+		std::string const	s{R"(1 + 3)"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("1"s, m.str(1));
+		EXPECT_EQ("+"s, m.str(2));
+		EXPECT_EQ("3"s, m.str(3));
+	}
+	{
+		std::string const	s{R"(+ 123 %)"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("+"s, m.str(1));
+		EXPECT_EQ("123"s, m.str(2));
+		EXPECT_EQ("%"s, m.str(3));
+	}
+	{
+		std::string const	s{R"(ab	+	cd)"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("ab"s, m.str(1));
+		EXPECT_EQ("+"s, m.str(2));
+		EXPECT_EQ("cd"s, m.str(3));
+	}
+	{
+		std::string const	s{R"(ab 	+ cd)"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("ab"s, m.str(1));
+		EXPECT_EQ("+"s, m.str(2));
+		EXPECT_EQ("cd"s, m.str(3));
+	}
+	{
+		std::string const	s{R"( 1 + 3)"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+	}
+	{
+		std::string const	s{R"(1 + 3 )"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+	}
+	{
+		std::string const	s{R"(1 3)"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+	}
+	{
+		std::string const	s{R"(13)"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+	}
+	{
+		std::string const	s{R"(1 + - 3)"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::binary_op_re));
+	}
+}
+TEST(def_string_re, Regex) {
+	{
+		std::string const	s{R"("")"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::string_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("\""s, m.str(1));
+		EXPECT_EQ(""s, m.str(2));
+		EXPECT_EQ("\""s, m.str(3));
+	}
+	{
+		std::string const	s{R"("a")"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::string_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("\""s, m.str(1));
+		EXPECT_EQ("a"s, m.str(2));
+		EXPECT_EQ("\""s, m.str(3));
+	}
+	{	// TODO: Such case is passed, too.
+		std::string const	s{R"("a')"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::string_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("\""s, m.str(1));
+		EXPECT_EQ("a"s, m.str(2));
+		EXPECT_EQ("'"s, m.str(3));
+	}
+	{	// TODO: Such case is passed, too.
+		std::string const	s{R"('a")"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::string_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("'"s, m.str(1));
+		EXPECT_EQ("a"s, m.str(2));
+		EXPECT_EQ("\""s, m.str(3));
+	}
+	{
+		std::string const	s{R"('a')"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::string_re));
+		EXPECT_EQ(4, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("'"s, m.str(1));
+		EXPECT_EQ("a"s, m.str(2));
+		EXPECT_EQ("'"s, m.str(3));
+	}
+	{
+		std::string const	s{R"('"')"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::string_re));
+	}
+	{
+		std::string const	s{R"( 'a')"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::string_re));
+	}
+	{
+		std::string const	s{R"('a' )"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::string_re));
+	}
+}
+TEST(def_integer_re, Regex) {
+	{
+		std::string const	s{R"(0)"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::integer_re));
+		EXPECT_EQ(2, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("0"s, m.str(1));
+	}
+	{
+		std::string const	s{R"(0123456789)"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::integer_re));
+		EXPECT_EQ(2, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("0123456789"s, m.str(1));
+	}
+	{
+		std::string const	s{R"(-0123456789)"};
+		std::smatch			m;
+		EXPECT_TRUE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::integer_re));
+		EXPECT_EQ(2, m.size());
+		EXPECT_EQ(s, m.str());
+		EXPECT_EQ("-0123456789"s, m.str(1));
+	}
+	{
+		std::string const	s{R"( -1)"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::integer_re));
+	}
+	{
+		std::string const	s{R"(-1 )"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::integer_re));
+	}
+	{
+		std::string const	s{R"(a)"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::integer_re));
+	}
+	{
+		std::string const	s{R"(-1a)"};
+		std::smatch			m;
+		EXPECT_FALSE(std::regex_match(s.cbegin(), s.cend(), m, xxx::pug::impl::def::integer_re));
+	}
+}
 
+#if 0
 	static std::regex const	doctype_re{ R"(^[dD][oO][cC][tT][yY][pP][eE] ([A-Za-z0-9_]+)$)" };
 	static std::regex const	tag_re{ R"(^([#.]?[A-Za-z_-][A-Za-z0-9_-]*))" };
 	static std::regex const	attr_re{ R"(^([A-Za-z_-][A-Za-z0-9_-]*)(=['"][^'"]*['"])?[ ,]*)" };
