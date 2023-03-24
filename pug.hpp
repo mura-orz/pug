@@ -672,7 +672,7 @@ inline bool		compare(operand_t const& lhs, std::string_view op, operand_t const&
 ///	@param[in]	expression	Condition.
 ///	@return		It returns the followings:
 ///		-#	Result of the evaluation.
-///		-#	Ccontext.
+///		-#	Context.
 inline std::tuple<bool,context_t>	evaluate(context_t const& context, std::string_view expression) {
 	if (svmatch m; std::regex_match(expression.cbegin(), expression.cend(), m, def::binary_op_re)) {
 		auto const&	op	= to_str(expression, m, 2);
