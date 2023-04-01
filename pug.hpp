@@ -279,7 +279,7 @@ inline std::shared_ptr<line_node_t>		parse_file(std::string_view pug, nest_t nes
 		auto	parent	= previous->parent() ? previous->parent() : previous;
 		if (a.second.starts_with(def::folding_sv)) {
 			if (parent == previous) {
-				throw ex::syntax_error();		// Folding line never be the top.
+				throw ex::syntax_error(__func__+std::to_string(__LINE__));		// Folding line never be the top.
 			}
 			parent->set_folding(true);			// Parent is folding.
 		}
@@ -481,12 +481,12 @@ inline std::tuple<std::string_view, std::string, std::string_view>
 			for ( ; std::regex_search(s.cbegin(), s.cend(), m, def::attr_re); s = s.substr(m.length())) {
 				os	<< " " << to_str(s, m, 1);
 				if (auto const parameter = to_str(s, m, 2); 1u < parameter.size()) {
-					if (parameter.at(1) != parameter.back())	throw ex::syntax_error();
+					if (parameter.at(1) != parameter.back())	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 					os	<< R"(=")" << parameter.substr(2, parameter.size()-3) << R"(")";
 				}
 			}
 			if ( ! s.starts_with(')')) {
-				throw ex::syntax_error();
+				throw ex::syntax_error(__func__+std::to_string(__LINE__));
 			}
 			os	<< " ";
 			s	= s.substr(1);
@@ -510,7 +510,7 @@ inline std::tuple<std::string_view, std::string, std::string_view>
 			return {std::string_view{}, os.str(), void_tag ? std::string_view{} : tag};
 		}
 	} else {
-		throw ex::syntax_error();
+		throw ex::syntax_error(__func__+std::to_string(__LINE__));
 	}
 }
 
@@ -563,12 +563,12 @@ inline operand_t	to_operand(context_t const& context, std::string_view str) {
 		iss >> i;
 		return i;
 	} else if (std::regex_match(operand.cbegin(), operand.cend(), mm, def::string_re)) {
-		if (to_str(operand, mm, 1) != to_str(operand, mm, 3))	throw ex::syntax_error();
+		if (to_str(operand, mm, 1) != to_str(operand, mm, 3))	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 		return to_str(operand, mm, 2);
 	} else if (variable) {
 		return operand;
 	}
-	throw ex::syntax_error();
+	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 };
 
 ///	@brief	Assigns value to variable.
@@ -580,16 +580,16 @@ inline operand_t	to_operand(context_t const& context, std::string_view str) {
 inline context_t	assign(context_t context, std::string_view variable, std::string_view op, operand_t const& value) {
 	if ( ! def::assign_ops.contains(op)) {
 		// TODO: Currently, it supports simple assign operators only.
-		throw ex::syntax_error();
+		throw ex::syntax_error(__func__+std::to_string(__LINE__));
 	}
 	if ( ! context.has_variable(variable) && op != "=") {
-		throw ex::syntax_error();
+		throw ex::syntax_error(__func__+std::to_string(__LINE__));
 	} else if (op == "=") {
 		context.set_variable(variable, std::visit(eval::operand_to_str{}, value));
 	} else if (eval::operand_t v = to_operand(context, variable); std::holds_alternative<std::string_view>(v)) {
 		if (auto const var = std::get<std::string_view>(v); op == "+=") {
 			context.set_variable(variable, std::string{ var } + std::visit(eval::operand_to_str{}, value));
-		} else	throw ex::syntax_error();
+		} else	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 	} else if (std::holds_alternative<long long>(v)) {
 		if (auto const var = std::get<long long>(v); std::holds_alternative<std::string_view>(value) && op == "+=") {
 			context.set_variable(variable, std::to_string(var) + std::string{ std::get<std::string_view>(value) });
@@ -601,13 +601,13 @@ inline context_t	assign(context_t context, std::string_view variable, std::strin
 			} else if (op == "*=") {
 				context.set_variable(variable, std::to_string(var * val));
 			} else if (op == "/=") {
-				if (val == 0)	throw ex::syntax_error();
+				if (val == 0)	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 				context.set_variable(variable, std::to_string(var / val));
 			} else if (op == "%=") {
-				if (val == 0)	throw ex::syntax_error();
+				if (val == 0)	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 				context.set_variable(variable, std::to_string(var % val));
-			} else	throw ex::syntax_error();
-		} else	throw ex::syntax_error();
+			} else	throw ex::syntax_error(__func__+std::to_string(__LINE__));
+		} else	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 	}
 	return context;
 }
@@ -620,7 +620,7 @@ inline context_t	assign(context_t context, std::string_view variable, std::strin
 inline bool		compare(operand_t const& lhs, std::string_view op, operand_t const& rhs) {
 	if ( ! def::compare_ops.contains(op)) {
 		// TODO: Currently, it supports simple binary comparison operators only.
-		throw ex::syntax_error();
+		throw ex::syntax_error(__func__+std::to_string(__LINE__));
 	}
 	if (std::holds_alternative<bool>(lhs)) {
 		auto const	lv	= std::get<bool>(lhs);
@@ -662,7 +662,7 @@ inline bool		compare(operand_t const& lhs, std::string_view op, operand_t const&
 		if (op == "==" || op == "===")			return lv == rv;
 		else if (op == "!=" || op == "!==") 	return lv != rv;
 	}
-	throw ex::syntax_error();
+	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 }
 
 }	// namespace eval
@@ -685,7 +685,7 @@ inline std::tuple<bool,context_t>	evaluate(context_t const& context, std::string
 		}
 	}
 	// TODO: Currently, it supports simple binary comparison operators only.
-	throw ex::syntax_error();
+	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 }
 
 ///	@brief	Parses a line of pug.
@@ -736,15 +736,15 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 		std::shared_ptr<line_node_t const>												else_;
 		{
 			auto const	parent	= line->parent();
-			if ( ! parent)		throw ex::syntax_error();
+			if ( ! parent)		throw ex::syntax_error(__func__+std::to_string(__LINE__));
 			auto const&		children	= parent->children();
 			for (auto itr = ++std::ranges::find(children, line), end = std::ranges::cend(children); itr != end; ++itr) {
 				auto const&		line	= (*itr)->line();
 				if (svmatch m; std::regex_match(line.cbegin(), line.cend(), m, def::elif_re)) {
-					if (else_)	throw ex::syntax_error();		// The 'else' appears at only the end of the sequence.
+					if (else_)	throw ex::syntax_error(__func__+std::to_string(__LINE__));		// The 'else' appears at only the end of the sequence.
 					elifs.push_back({to_str(line, m, 1), *itr});
 				} else if (std::regex_match(line.cbegin(), line.cend(), m, def::else_re)) {
-					if (else_)	throw ex::syntax_error();		// The 'else' appears only once.
+					if (else_)	throw ex::syntax_error(__func__+std::to_string(__LINE__));		// The 'else' appears only once.
 					else_	= *itr;
 				} else {
 					break;
@@ -778,17 +778,17 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 		auto const&	children	= line->children();
 		auto const	cases		= std::accumulate(std::ranges::cbegin(children), std::ranges::cend(children), cases_t{}, [contains](auto&& out, auto const& a) {
 				if (auto const& ss = a->line(); ss == def::default_sv) {
-					if (contains(out, std::string_view{}))		throw ex::syntax_error();
+					if (contains(out, std::string_view{}))		throw ex::syntax_error(__func__+std::to_string(__LINE__));
 					out.push_back({std::string_view{}, a});
 				} else if (svmatch mm; std::regex_match(ss.cbegin(), ss.cend(), mm, def::when_re)) {
 					if (to_str(ss, mm, 1) != to_str(ss, mm, 3)) {
-						throw ex::syntax_error();
+						throw ex::syntax_error(__func__+std::to_string(__LINE__));
 					}
 					auto const	label	= to_str(a->line(), mm, 2);
-					if (contains(out, label))		throw ex::syntax_error();
+					if (contains(out, label))		throw ex::syntax_error(__func__+std::to_string(__LINE__));
 					out.push_back({ label, a });
 				} else {
-					throw ex::syntax_error();
+					throw ex::syntax_error(__func__+std::to_string(__LINE__));
 				}
 				return std::move(out);
 			});
@@ -837,12 +837,12 @@ inline	std::tuple<std::string,context_t>	parse_line(context_t const& context, st
 		std::vector<std::string>	items;
 		for (std::string item; std::getline(iss, item, ','); ) {
 			auto const	begin	= item.find_first_not_of(" \t");
-			if (begin == std::string::npos)	throw ex::syntax_error();
+			if (begin == std::string::npos)	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 			auto const	end		= item.find_last_not_of(" \t,");
 			auto const	i		= item.substr(begin, end - begin + 1);
 			if (i.starts_with('"') || i.starts_with("'")) {
-				if (i.size() < 2)			throw ex::syntax_error();
-				if (i.front() != i.back())	throw ex::syntax_error();
+				if (i.size() < 2)			throw ex::syntax_error(__func__+std::to_string(__LINE__));
+				if (i.front() != i.back())	throw ex::syntax_error(__func__+std::to_string(__LINE__));
 				items.emplace_back(i.substr(1, i.size() - 2));
 			} else {
 				items.emplace_back(i);
