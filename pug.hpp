@@ -453,7 +453,7 @@ inline std::tuple<std::string_view, std::string, std::string_view>
 		} else if (s.starts_with("!=")) {
 			s	= s.substr(2);
 		} else if (s.starts_with('=')) {
-			bool	escape = true;
+			escape = true;
 			s	= s.substr(1);
 		}
 
