@@ -221,9 +221,7 @@ public:
 	///	@brief	Gets the parent of the node.
 	///	@return		the parent of the node.
 	///				It returns null if the node is the root of nodes.
-	auto const parent() const noexcept { return parent_.lock(); }
-	///	@copydoc	line_node_t::push_nest()
-	auto parent() noexcept { return parent_.lock(); }
+	auto parent() const noexcept { return parent_.lock(); }
 	///	@brief	Gets whether the node is folding or not.
 	///	@return		It returns true if the node is folding; otherwise, it returns false.
 	bool folding() const noexcept { return folding_; }
@@ -243,7 +241,7 @@ public:
 	}
 	///	@brief	Constructor.
 	///	@param[in]	line	Line
-	///	@param[in]	parent	Larent of this node.
+	///	@param[in]	parent	Parent of this node.
 	explicit line_node_t(line_t const& line, std::shared_ptr<line_node_t> parent) noexcept :
 		children_{}, parent_{parent}, line_{line}, folding_{} {}
 	///	@brief	Constructor.
@@ -261,7 +259,7 @@ private:
 ///		It returns an ancestor has the nested level less than or equal to the @p nest.
 ///	@param[in]	node	The current node.
 ///	@param[in]	nest	Nested level to pop.
-///	@return		The poped node.
+///	@return		The popped node.
 inline std::shared_ptr<line_node_t> pop_nest(std::shared_ptr<line_node_t> node, nest_t nest) {
 	return ! node || node->nest() <= nest ? node : pop_nest(node->parent(), nest);
 }
@@ -296,7 +294,7 @@ inline std::shared_ptr<line_node_t> parse_file(std::string_view pug, nest_t nest
 	auto const lines	 = raw_lines | std::views::transform(&get_line_nest) | std::views::transform([nest](auto const& a) { return line_t{a.first + nest, a.second}; });
 
 	// Parses to tree of nested lines.
-	(void)std::accumulate(lines.begin(), lines.end(), root, [nest](auto&& previous, auto const& a) {
+	(void)std::accumulate(lines.begin(), lines.end(), root, [](auto&& previous, auto const& a) {
 		auto parent = previous->parent() ? previous->parent() : previous;
 		if (a.second.starts_with(def::folding_sv)) {
 			if (parent == previous) {
