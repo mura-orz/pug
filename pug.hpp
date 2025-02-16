@@ -349,6 +349,7 @@ inline bool is_folding(std::shared_ptr<line_node_t const> line, bool parent_only
 class context_t {
 	///	@brief	Map of blocks.
 	using blocks_t = std::unordered_map<std::string_view, std::shared_ptr<line_node_t const>>;
+public:
 	///	@brief	Map of blocks.
 	using variables_t = std::unordered_map<std::string_view, std::string>;
 
@@ -396,6 +397,10 @@ public:
 	///	@brief	Constructor.
 	context_t() noexcept :
 		blocks_{}, variables_{} {}
+	///	@brief	Constructor.
+	///	@param[in]	variables	Variables.
+	explicit context_t(variables_t const& variables) noexcept :
+		blocks_{}, variables_{variables} {}
 
 private:
 	blocks_t	blocks_;	   ///< @brief	Blocks.
@@ -961,6 +966,28 @@ inline std::string pug_string(std::string_view pug, std::filesystem::path const&
 inline std::string pug_file(std::filesystem::path const& path) {
 	auto const source = impl::load_file(path);
 	return pug_string(source, path);
+}
+
+using variables_t = impl::context_t::variables_t;	///< @brief	Map of variables.
+
+///	@brief	Translates a pug string to HTML string.
+///	@param[in]	variables	Variables.
+///	@param[in]	pug			Source string formatted in pug.
+///	@param[in]	path		Path of working directory.
+///	@return		String of generated HTML.
+inline std::string pug_string_with_variables(variables_t const& variables, std::string_view pug, std::filesystem::path const& path = "./") {
+	auto const root	 = impl::parse_file(pug);
+	auto const [out, ctx] = impl::parse_line(impl::context_t{variables}, root, path);
+	return out;
+}
+
+///	@brief	Translates a pug file to HTML string.
+///	@param[in]	variables	Variables.
+///	@param[in]	path	Path of the pug file.
+///	@return		String of generated HTML.
+inline std::string pug_file_with_variables(variables_t const& variables, std::filesystem::path const& path) {
+	auto const source = impl::load_file(path);
+	return pug_string_with_variables(variables, source, path);
 }
 
 }	 // namespace xxx::pug
