@@ -592,12 +592,12 @@ inline operand_t to_operand(context_t const& context, std::string_view str) {
 		iss >> i;
 		return i;
 	} else if (std::regex_match(operand.cbegin(), operand.cend(), mm, def::string_re)) {
-		if (to_str(operand, mm, 1) != to_str(operand, mm, 3)) throw ex::syntax_error(__func__ + std::to_string(__LINE__));
+		if (to_str(operand, mm, 1) != to_str(operand, mm, 3)) throw ex::syntax_error(__func__ + std::to_string(__LINE__) + std::string{str});
 		return to_str(operand, mm, 2);
 	} else if (variable) {
 		return operand;
 	}
-	throw ex::syntax_error(__func__ + std::to_string(__LINE__));
+	throw ex::syntax_error(__func__ + std::to_string(__LINE__) + std::string{str});
 };
 
 ///	@brief	Assigns value to variable.
