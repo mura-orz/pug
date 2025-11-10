@@ -349,6 +349,7 @@ inline bool is_folding(std::shared_ptr<line_node_t const> line, bool parent_only
 class context_t {
 	///	@brief	Map of blocks.
 	using blocks_t = std::unordered_map<std::string_view, std::shared_ptr<line_node_t const>>;
+
 public:
 	///	@brief	Map of blocks.
 	using variables_t = std::unordered_map<std::string_view, std::string>;
@@ -561,13 +562,14 @@ inline std::tuple<std::string, context_t> parse_children(context_t context, std:
 namespace eval {
 
 ///	@brief	Operand value.
-using operand_t = std::variant<long long, bool, std::string_view>;
+using operand_t = std::variant<long long, bool, std::string_view, std::nullptr_t>;
 
 ///	@brief	Operand value to string.
 struct operand_to_str {
 	std::string operator()(long long v) const { return std::to_string(v); }
 	std::string operator()(bool v) const { return v ? "true" : "false"; }
 	std::string operator()(std::string_view v) const { return std::string{v}; }
+	std::string operator()(std::nullptr_t) const { return "{undefined}"; }
 };
 
 ///	@brief	Gets an operand value.
@@ -597,7 +599,7 @@ inline operand_t to_operand(context_t const& context, std::string_view str) {
 	} else if (variable) {
 		return operand;
 	}
-	throw ex::syntax_error(__func__ + std::to_string(__LINE__) + std::string{str});
+	return nullptr;
 };
 
 ///	@brief	Assigns value to variable.
@@ -711,6 +713,8 @@ inline bool compare(operand_t const& lhs, std::string_view op, operand_t const& 
 			return lv == rv;
 		else if (op == "!=" || op == "!==")
 			return lv != rv;
+	} else if (std::holds_alternative<std::nullptr_t>(lhs)) {
+		return std::holds_alternative<std::nullptr_t>(rhs);
 	}
 	throw ex::syntax_error(__func__ + std::to_string(__LINE__));
 }
@@ -968,7 +972,7 @@ inline std::string pug_file(std::filesystem::path const& path) {
 	return pug_string(source, path);
 }
 
-using variables_t = impl::context_t::variables_t;	///< @brief	Map of variables.
+using variables_t = impl::context_t::variables_t;	 ///< @brief	Map of variables.
 
 ///	@brief	Translates a pug string to HTML string.
 ///	@param[in]	variables	Variables.
@@ -976,7 +980,7 @@ using variables_t = impl::context_t::variables_t;	///< @brief	Map of variables.
 ///	@param[in]	path		Path of working directory.
 ///	@return		String of generated HTML.
 inline std::string pug_string_with_variables(variables_t const& variables, std::string_view pug, std::filesystem::path const& path = "./") {
-	auto const root	 = impl::parse_file(pug);
+	auto const root		  = impl::parse_file(pug);
 	auto const [out, ctx] = impl::parse_line(impl::context_t{variables}, root, path);
 	return out;
 }
